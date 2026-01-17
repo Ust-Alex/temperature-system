@@ -3,14 +3,17 @@
 
 #include "system_config.h"
 #include "rtos_tasks.h"
+#include "wifi_ap_module.h"
 
 void setup() {
   initHardware();
+  wifi_ap_setup();
   create_rtos_tasks();
 }
 
 void loop() {
   vTaskDelete(NULL);
+  wifi_ap_loop();
 }
 
 TFT_eSPI tft;
