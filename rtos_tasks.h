@@ -6,9 +6,15 @@
 #include "mode2_logic.h"
 #include "serial_interface.h"
 
+// ============================================================================
+// ОБЪЯВЛЕНИЯ ВСЕХ ЗАДАЧ (только здесь!)
+// ============================================================================
 void taskMeasure(void* pv);
 void taskDisplay(void* pv);
 void taskSerial(void* pv);
+void taskWiFi(void* pv);      // <-- Новая задача Wi-Fi
+
+// Функция создания всех задач
 void create_rtos_tasks();
 
-#endif
+#endif // RTOS_TASKS_H
