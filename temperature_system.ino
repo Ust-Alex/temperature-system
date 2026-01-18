@@ -12,7 +12,7 @@ void setup() {
 }
 
 void loop() {
-  vTaskDelete(NULL);
+  // vTaskDelete(NULL);
   wifi_ap_loop();
 }
 

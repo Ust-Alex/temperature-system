@@ -1,9 +1,10 @@
+#include <WiFi.h>
+#include <WebServer.h>
 #include "wifi_ap_module.h"
 #include "system_config.h"
-#include <WiFi.h>
 #include <WebSocketsServer.h>
 
-// ТОЧНО КАК В ТЕСТЕ
+// ========== КОНФИГУРАЦИЯ ==========
 #ifndef WIFI_AP_SSID
 #define WIFI_AP_SSID      "Temperature_System"
 #endif
@@ -12,86 +13,196 @@
 #define WIFI_AP_PASSWORD  "termo1234"
 #endif
 
-// ТОЧНО КАК В ТЕСТЕ
-WiFiServer server(80);
-WebSocketsServer webSocket(81);
-bool wifiStarted = false;
+#ifndef WIFI_AP_CHANNEL
+#define WIFI_AP_CHANNEL   6
+#endif
 
-void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
-    // Пусто
+#ifndef WEB_SERVER_PORT
+#define WEB_SERVER_PORT   80
+#endif
+
+#ifndef WS_SERVER_PORT
+#define WS_SERVER_PORT    81
+#endif
+
+#ifndef WEB_UPDATE_INTERVAL_MS
+#define WEB_UPDATE_INTERVAL_MS 500
+#endif
+
+// ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
+WebServer server(WEB_SERVER_PORT);
+WebSocketsServer webSocket(WS_SERVER_PORT);
+uint32_t lastWebUpdate = 0;
+bool wifiAPStarted = false;
+
+// ========== HTML ВЕБ-СТРАНИЦЫ (сокращенная версия) ==========
+const char WEB_PAGE_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Температурная система</title>
+    <style>
+        body { font-family: Arial; background: #2c3e50; color: white; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .sensor-card { background: rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; margin: 10px 0; }
+        .sensor-name { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px; }
+        .temperature { font-size: 2.5rem; font-weight: bold; font-family: monospace; }
+        .status { background: #27ae60; padding: 5px 10px; border-radius: 5px; display: inline-block; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📡 Температурная система</h1>
+            <p>Мониторинг в реальном времени</p>
+        </div>
+        <div id="sensors-container">
+            <!-- Данные появятся здесь -->
+        </div>
+        <div class="status">WebSocket: <span id="ws-status">Подключение...</span></div>
+    </div>
+
+    <script>
+        const SENSOR_NAMES = ["Стенка 100см", "Стенка 75см", "Стенка 50см", "Гильза 25см"];
+        
+        function initializeSensors() {
+            const container = document.getElementById('sensors-container');
+            container.innerHTML = '';
+            for(let i = 0; i < 4; i++) {
+                const card = document.createElement('div');
+                card.className = 'sensor-card';
+                card.innerHTML = `
+                    <div class="sensor-name">${SENSOR_NAMES[i]}</div>
+                    <div class="temperature" id="temp-${i}">--.-- °C</div>
+                    <div id="time-${i}">Ожидание данных...</div>
+                `;
+                container.appendChild(card);
+            }
+        }
+        
+        let ws;
+        function connectWebSocket() {
+            const wsUrl = 'ws://' + location.hostname + ':81/';
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                document.getElementById('ws-status').textContent = '✅ Подключено';
+                document.getElementById('ws-status').style.color = '#27ae60';
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('ws-status').textContent = '❌ Отключено';
+                document.getElementById('ws-status').style.color = '#e74c3c';
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    for(let i = 0; i < 4; i++) {
+                        const temp = data['t' + i];
+                        const element = document.getElementById('temp-' + i);
+                        if(element && temp !== null && temp !== undefined) {
+                            element.textContent = parseFloat(temp).toFixed(2) + ' °C';
+                            document.getElementById('time-' + i).textContent = 
+                                'Обновлено: ' + new Date().toLocaleTimeString();
+                        }
+                    }
+                } catch(e) {
+                    console.error('Ошибка:', e);
+                }
+            };
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeSensors();
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>
+)rawliteral";
+
+// ========== ОБРАБОТЧИКИ WEB SOCKET ==========
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+    switch(type) {
+        case WStype_DISCONNECTED:
+            Serial.printf("[WebSocket] Клиент %u отключен\n", num);
+            break;
+        case WStype_CONNECTED: {
+            IPAddress ip = webSocket.remoteIP(num);
+            Serial.printf("[WebSocket] Клиент %u подключен\n", num);
+            wifi_ap_send_temperatures();
+            break;
+        }
+    }
 }
 
-// ТОЧНАЯ КОПИЯ setup() ИЗ ТЕСТА
+// ========== ОСНОВНЫЕ ФУНКЦИИ ==========
 void wifi_ap_setup() {
-    Serial.println("\n=== WI-FI AP ===");
+    Serial.println("\n=== ИНИЦИАЛИЗАЦИЯ WI-FI AP ===");
     
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
+    WiFi.mode(WIFI_AP);
     
-    Serial.print("SSID: ");
+    if(!WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL)) {
+        Serial.println("[WiFi] Ошибка запуска AP!");
+        return;
+    }
+    
+    server.on("/", HTTP_GET, []() {
+        server.send_P(200, "text/html; charset=utf-8", WEB_PAGE_HTML);
+    });
+    
+    server.onNotFound([]() {
+        server.send(404, "text/plain", "Страница не найдена");
+    });
+    
+    server.begin();
+    webSocket.onEvent(webSocketEvent);
+    webSocket.begin();
+    wifiAPStarted = true;
+    
+    Serial.println("=================================");
+    Serial.print("Wi-Fi AP: ");
     Serial.println(WIFI_AP_SSID);
     Serial.print("IP: ");
     Serial.println(WiFi.softAPIP());
-    
-    server.begin();
-    webSocket.begin();
-    webSocket.onEvent(webSocketEvent);
-    
-    wifiStarted = true;
-    Serial.println("=====================\n");
+    Serial.println("=================================\n");
 }
 
-// ТОЧНАЯ КОПИЯ loop() ИЗ ТЕСТА
 void wifi_ap_loop() {
-    if(!wifiStarted) return;
+    if(!wifiAPStarted) return;
     
-    // ТОЧНО КАК В ТЕСТЕ
-    WiFiClient client = server.available();
-    
-    if(client) {
-        Serial.println("New client connected!");
-        
-        // Ждём запрос ТОЧНО КАК В ТЕСТЕ
-        while(client.connected() && !client.available()) {
-            delay(1);
-        }
-        
-        // Читаем запрос ТОЧНО КАК В ТЕСТЕ
-        String request = client.readStringUntil('\r');
-        Serial.print("Request: ");
-        Serial.println(request);
-        
-        // ОТВЕТ ТОЧНО КАК В ТЕСТЕ (с большим шрифтом)
-        client.println("HTTP/1.1 200 OK");
-        client.println("Content-Type: text/html; charset=UTF-8");
-        client.println("Connection: close");
-        client.println();
-        
-        // HTML ТОЧНО КАК В ТЕСТЕ (большой шрифт)
-        client.println("<html><head><meta name='viewport' content='width=device-width, initial-scale=1.0'></head>");
-        client.println("<body style='margin:0; padding:20px; background:black; color:white;'>");
-        client.println("<div style='font-size: 60px; font-weight: bold; text-align: center; margin: 20px;'>");
-        client.println("ESP32 РАБОТАЕТ!");
-        client.println("</div>");
-        client.println("<div style='font-size: 40px; text-align: center;'>");
-        client.println("Если видите этот текст");
-        client.println("<br>Wi-Fi и HTTP работают");
-        client.println("</div>");
-        client.println("<div style='font-size: 30px; text-align: center; margin-top: 40px; color: #4CAF50;'>");
-        client.println("УСПЕХ! ✅");
-        client.println("</div>");
-        client.println("</body></html>");
-        
-        client.stop();
-        Serial.println("Page sent (BIG FONT)\n");
-    }
-    
-    // WebSocket (пока пусто)
+    server.handleClient();
     webSocket.loop();
     
-    delay(100);
+    uint32_t currentTime = millis();
+    if(currentTime - lastWebUpdate >= WEB_UPDATE_INTERVAL_MS) {
+        lastWebUpdate = currentTime;
+        wifi_ap_send_temperatures();
+    }
 }
 
-// Заглушка
 void wifi_ap_send_temperatures() {
-    // Пока не используется
+    if(!wifiAPStarted || webSocket.connectedClients() == 0) return;
+    
+    if(xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        String json = "{";
+        for(int i = 0; i < 4; i++) {
+            float temp = sensors[i].temp;
+            if(temp <= TEMP_NO_DATA + 0.1f) {
+                json += "\"t" + String(i) + "\":null";
+            } else {
+                json += "\"t" + String(i) + "\":" + String(temp, 2);
+            }
+            if(i < 3) json += ",";
+        }
+        json += "}";
+        
+        webSocket.broadcastTXT(json.c_str(), json.length());
+        xSemaphoreGive(dataMutex);
+    }
 }
