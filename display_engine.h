@@ -4,6 +4,7 @@
 #include "system_config.h"
 #include "mode2_logic.h"
 
+// ВОЗВРАЩАЕМ СТАРЫЕ СИГНАТУРЫ (пока что):
 void performFullDisplayRedraw();
 void clearTemperatureArea(int y, uint16_t bgColor);
 void clearDeltaArea(int y, const char* deltaStr, uint16_t bgColor);

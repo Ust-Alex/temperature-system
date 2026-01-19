@@ -1,5 +1,24 @@
 
-bash
+
 git add .
 git commit -m "Fix FreeRTOS tasks"
 git push origin main
+
+
+
+
+https://github.com/Ust-Alex/temperature-system/blob/main/display_engine.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/display_engine.h
+https://github.com/Ust-Alex/temperature-system/blob/main/hardware_control.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/hardware_control.h
+https://github.com/Ust-Alex/temperature-system/blob/main/measurement_core.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/measurement_core.h
+https://github.com/Ust-Alex/temperature-system/blob/main/mode1_logic.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/mode1_logic.h
+https://github.com/Ust-Alex/temperature-system/blob/main/mode2_logic.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/mode2_logic.h
+https://github.com/Ust-Alex/temperature-system/blob/main/rtos_tasks.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/rtos_tasks.h
+https://github.com/Ust-Alex/temperature-system/blob/main/serial_interface.cpp
+https://github.com/Ust-Alex/temperature-system/blob/main/serial_interface.h
+https://github.com/Ust-Alex/temperature-system/blob/main/temperature_system.ino

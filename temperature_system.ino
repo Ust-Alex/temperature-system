@@ -1,18 +1,47 @@
-// temperature_system проба
-
+// temperature_system.ino
 
 #include "system_config.h"
 #include "rtos_tasks.h"
 
 void setup() {
-  initHardware();
-  create_rtos_tasks();
+    initHardware();
+    
+    // Дополнительная инициализация (после initHardware)
+    Serial.println("\n[INIT] Проверка системы...");
+    
+    // Создание задач FreeRTOS
+    create_rtos_tasks();
+    
+    // Запуск таймера для периодических проверок
+    Serial.println("[INIT] Система запущена. Мониторинг начат.");
 }
 
 void loop() {
-  vTaskDelete(NULL);
+    // Основной цикл пустой - всё работает в задачах FreeRTOS
+    // Периодически проверяем общее состояние системы
+    
+    static uint32_t lastSystemCheck = 0;
+    uint32_t currentMillis = millis();
+    
+    // Проверка каждые 5 минут
+    if (currentMillis - lastSystemCheck > 300000) {
+        Serial.println("\n[SYSTEM CHECK] ========================");
+        Serial.printf("Время работы: %lu минут\n", currentMillis / 60000);
+        Serial.printf("Режим: %d\n", sysData.mode);
+        Serial.printf("Датчик гильзы: %s\n", sensors[3].found ? "OK" : "LOST");
+        Serial.printf("Ошибка: %s\n", criticalError ? "ДА" : "нет");
+        Serial.printf("Очередь данных: %s\n", dataQueue ? "создана" : "нет");
+        Serial.printf("Мьютекс: %s\n", dataMutex ? "создан" : "нет");
+        Serial.println("====================================\n");
+        
+        lastSystemCheck = currentMillis;
+    }
+    
+    // Короткая пауза
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
+// ... остальной код без изменений ...
 TFT_eSPI tft;
 OneWire oneWireA(ONE_WIRE_BUS_A);
 OneWire oneWireB(ONE_WIRE_BUS_B);
