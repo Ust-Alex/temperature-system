@@ -1,0 +1,5 @@
+
+bash
+git add .
+git commit -m "Fix FreeRTOS tasks"
+git push origin main

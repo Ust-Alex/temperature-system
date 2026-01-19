@@ -1,6 +1,0 @@
-TEMPERATURE_SYSTEM.INO Откройте терминал в папке проекта и выполните:
-                               | 
-                               | bash
-                               | git add .
-                               | git commit -m "Fix FreeRTOS tasks"
-                               | git push origin main
