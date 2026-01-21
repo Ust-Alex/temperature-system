@@ -4,7 +4,7 @@
 #include "system_config.h"
 #include "mode2_logic.h"
 
-// ВОЗВРАЩАЕМ СТАРЫЕ СИГНАТУРЫ (пока что):
+// СУЩЕСТВУЮЩИЕ ФУНКЦИИ (без изменений):
 void performFullDisplayRedraw();
 void clearTemperatureArea(int y, uint16_t bgColor);
 void clearDeltaArea(int y, const char* deltaStr, uint16_t bgColor);
@@ -17,5 +17,9 @@ void updateDisplayMODE2_YELLOW();
 void updateDisplayMODE2_RED();
 uint16_t getCurrentBackgroundColor();
 void resetDisplayState(uint8_t newMode);
+
+// НОВЫЕ ФУНКЦИИ ДЛЯ ЭКРАНА ВЫБОРА РЕЖИМА:
+void updateDisplayMODE_select(uint8_t selectedIndex, uint8_t currentMode);
+// TODO: добавить функции для других экранов (меню, настройки и т.д.)
 
 #endif
