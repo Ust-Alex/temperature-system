@@ -3,7 +3,7 @@
 void initHardware() {
   Serial.begin(115200);
   delay(1000);
-  
+
   Serial.println("\n" + String(60, '='));
   Serial.println("    СИСТЕМА МОНИТОРИНГА ТЕМПЕРАТУР - FreeRTOS 3.0");
   Serial.println("    УЛУЧШЕННАЯ ВЕРСИЯ С ПОЛНЫМ СБРОСОМ ДИСПЛЕЯ");
@@ -191,7 +191,7 @@ void initFreeRTOSObjects() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 100);
     tft.print("ОШИБКА ОЧЕРЕДИ!");
-    while (1) delay(1000);
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
   }
   Serial.println("   ✅ Очередь данных создана");
 
@@ -201,7 +201,7 @@ void initFreeRTOSObjects() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 100);
     tft.print("ОШИБКА МЬЮТЕКСА!");
-    while (1) delay(1000);
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
   }
   Serial.println("   ✅ Мьютекс создан");
 }

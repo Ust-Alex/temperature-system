@@ -41,7 +41,6 @@ void loop() {
     vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
-// ... остальной код без изменений ...
 TFT_eSPI tft;
 OneWire oneWireA(ONE_WIRE_BUS_A);
 OneWire oneWireB(ONE_WIRE_BUS_B);

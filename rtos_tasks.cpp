@@ -332,7 +332,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 100);
     tft.print("ОШИБКА: MeasureTask");
-    while (1) delay(1000);  // Остановка системы
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
   }
   Serial.println("✅ Задача измерений создана (приоритет 3, ядро 1, стек 8KB)");
 
@@ -350,7 +350,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 100);
     tft.print("ОШИБКА: DisplayTask");
-    while (1) delay(1000);
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
   }
   Serial.println("✅ Задача дисплея создана (приоритет 2, ядро 1, стек 12KB)");
 
@@ -368,7 +368,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 100);
     tft.print("ОШИБКА: SerialTask");
-    while (1) delay(1000);
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
   }
   Serial.println("✅ Задача Serial создана (приоритет 1, ядро 1, стек 4KB)");
 
