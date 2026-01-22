@@ -1,5 +1,5 @@
 #include "rtos_tasks.h"
-#include "encoder_engine.h" // ДОБАВЛЕНО: новый модуль энкодера
+#include "encoder_engine.h"  // ДОБАВЛЕНО: новый модуль энкодера
 
 // ============================================================================
 // ВСПОМОГАТЕЛЬНЫЕ МАКРОСЫ ДЛЯ ОТЛАДКИ
@@ -13,21 +13,21 @@
 // ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ДИСПЛЕЯ (только в этом файле)
 // ============================================================================
 // static uint8_t systemState = 0;           // 0 = STATE_MAIN, 1 = STATE_MODE
-static uint8_t selectedModeIndex = 0;     // 0 = MODE1, 1 = MODE2 (для STATE_MODE)
-static uint32_t lastUserActivity = 0;     // Время последней активности
+static uint8_t selectedModeIndex = 0;  // 0 = MODE1, 1 = MODE2 (для STATE_MODE)
+static uint32_t lastUserActivity = 0;  // Время последней активности
 
 // ============================================================================
 // ЗАДАЧА ЭНКОДЕРА (НОВАЯ ЗАДАЧА)
 // ============================================================================
 void taskEncoder(void* pv) {
   TickType_t lastWakeTime = xTaskGetTickCount();
-  
+
   Serial.println("🎛️  Задача энкодера запущена");
 
   while (1) {
     // 1. ОПРОС ЭНКОДЕРА
     EncoderEvent_t event = encoder_tick();
-    
+
     // 2. ЕСЛИ ЕСТЬ СОБЫТИЕ - ОТПРАВЛЯЕМ В ОЧЕРЕДЬ
     if (event != EVENT_NONE && eventQueue != NULL) {
       // НЕБЛОКИРУЮЩАЯ отправка (0 тиков ожидания)
@@ -41,14 +41,14 @@ void taskEncoder(void* pv) {
         }
       }
     }
-    
+
     // 3. ТОЧНЫЙ ИНТЕРВАЛ ОПРОСА (100 Гц = каждые 10 мс)
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(ENCODER_POLL_INTERVAL));
   }
 }
 
 // ============================================================================
-// ЗАДАЧА ИЗМЕРЕНИЙ (БЕЗ ИЗМЕНЕНИЙ)
+// ЗАДАЧА ИЗМЕРЕНИЙ
 // ============================================================================
 void taskMeasure(void* pv) {
   TickType_t lastWakeTime = xTaskGetTickCount();
@@ -222,7 +222,7 @@ void taskDisplay(void* pv) {
     if (currentMillis - lastHeartbeat > HEARTBEAT_INTERVAL) {
       UBaseType_t stackFree = uxTaskGetStackHighWaterMark(NULL);
       Serial.printf("[DISPLAY] Heartbeat: стейт=%d, выбор=%d, неактивность=%lu сек\n",
-                    systemState, selectedModeIndex, 
+                    systemState, selectedModeIndex,
                     (currentMillis - lastUserActivity) / 1000);
       lastHeartbeat = currentMillis;
     }
@@ -230,9 +230,9 @@ void taskDisplay(void* pv) {
     // 2. ПРОВЕРКА ТАЙМАУТА НЕАКТИВНОСТИ (30 секунд)
     if (systemState != 0 && (currentMillis - lastUserActivity > INACTIVITY_TIMEOUT)) {
       Serial.println("[DISPLAY] Таймаут неактивности - возврат в главный экран");
-      systemState = 0; // Возвращаемся в STATE_MAIN
-      forceDisplayRedraw = true; // Запускаем полную перерисовку
-      lastUserActivity = currentMillis; // Сбрасываем таймер
+      systemState = 0;                   // Возвращаемся в STATE_MAIN
+      forceDisplayRedraw = true;         // Запускаем полную перерисовку
+      lastUserActivity = currentMillis;  // Сбрасываем таймер
     }
 
     // 3. ПРОВЕРКА ИНИЦИАЛИЗАЦИИ СИСТЕМЫ (без изменений)
@@ -251,26 +251,26 @@ void taskDisplay(void* pv) {
       while (xQueueReceive(eventQueue, &encoderEvent, 0) == pdTRUE) {
         // Сбрасываем таймер неактивности при ЛЮБОМ событии
         lastUserActivity = currentMillis;
-        
+
         // ОБРАБОТКА СОБЫТИЙ В ЗАВИСИМОСТИ ОТ ТЕКУЩЕГО СОСТОЯНИЯ
         switch (systemState) {
-          case 0: // STATE_MAIN
+          case 0:  // STATE_MAIN
             if (encoderEvent == EVENT_BUTTON_CLICK) {
               Serial.println("[DISPLAY] Короткое нажатие -> переход в STATE_MODE");
-              systemState = 1; // Переходим в режим выбора
-              selectedModeIndex = sysData.mode; // Устанавливаем текущий режим как выбранный
-              forceDisplayRedraw = true; // Требуем перерисовку
+              systemState = 1;                   // Переходим в режим выбора
+              selectedModeIndex = sysData.mode;  // Устанавливаем текущий режим как выбранный
+              forceDisplayRedraw = true;         // Требуем перерисовку
             }
             break;
-            
-          case 1: // STATE_MODE
+
+          case 1:  // STATE_MODE
             switch (encoderEvent) {
               case EVENT_BUTTON_CLICK:
                 Serial.println("[DISPLAY] Короткое нажатие -> возврат в STATE_MAIN");
-                systemState = 0; // Возвращаемся в главный экран
+                systemState = 0;  // Возвращаемся в главный экран
                 forceDisplayRedraw = true;
                 break;
-                
+
               case EVENT_BUTTON_DOUBLE:
                 Serial.printf("[DISPLAY] Двойное нажатие -> применение режима %d\n", selectedModeIndex);
                 // Применяем выбранный режим через существующую функцию
@@ -279,19 +279,19 @@ void taskDisplay(void* pv) {
                 systemState = 0;
                 forceDisplayRedraw = true;
                 break;
-                
+
               case EVENT_ENCODER_LEFT:
                 Serial.println("[DISPLAY] Поворот влево -> выбор MODE1");
-                selectedModeIndex = 0; // MODE1
+                selectedModeIndex = 0;  // MODE1
                 forceDisplayRedraw = true;
                 break;
-                
+
               case EVENT_ENCODER_RIGHT:
                 Serial.println("[DISPLAY] Поворот вправо -> выбор MODE2");
-                selectedModeIndex = 1; // MODE2
+                selectedModeIndex = 1;  // MODE2
                 forceDisplayRedraw = true;
                 break;
-                
+
               default:
                 // Другие события игнорируем в этом состоянии
                 break;
@@ -307,68 +307,88 @@ void taskDisplay(void* pv) {
       if (xQueueReceive(dataQueue, &displayData, pdMS_TO_TICKS(100)) == pdTRUE) {
         newDataReceived = true;
         displayUpdates++;
-        
-        // ... (обработка данных температуры без изменений) ...
-      }
-    }
 
-    // 7. ВЫБОР ФУНКЦИИ ОТРИСОВКИ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ
-    if (newDataReceived || (currentMillis - lastUpdateTime >= DISPLAY_UPDATE_MS) || forceDisplayRedraw) {
-      
-      // ОБНОВЛЕНИЕ ЦВЕТОВОГО СОСТОЯНИЯ (для MODE2, без изменений)
-      if (sysData.mode == 1 && sensors[3].found && guildBaseTemp != 0.0f) {
-        float currentGuildTemp = 0.0f;
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-          currentGuildTemp = sysData.temps[3];
+        // 6. БЕЗОПАСНОЕ ОБНОВЛЕНИЕ СИСТЕМНЫХ ДАННЫХ
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(15)) == pdTRUE) {
+          // Сохраняем старый режим для обнаружения смены
+          uint8_t oldMode = sysData.mode;
+
+          // Копируем ВСЕ данные из очереди
+          sysData.mode = displayData.mode;
+          sysData.needsRedraw = displayData.needsRedraw;
+          memcpy(sysData.temps, displayData.temps, sizeof(float) * 4);
+          memcpy(sysData.deltas, displayData.deltas, sizeof(float) * 4);
+
+          // Обнаружение смены режима
+          if (sysData.mode != oldMode) {
+            Serial.printf("[DISPLAY] Смена режима: %d -> %d\n",
+                          oldMode, sysData.mode);
+            lastDisplayMode = sysData.mode;
+            forceDisplayRedraw = true;
+          }
+
           xSemaphoreGive(dataMutex);
         }
-        if (isValidTemperature(currentGuildTemp)) {
-          mode2_update_color_state(currentGuildTemp);
-        }
       }
-      
-      // ВЫБОР ЭКРАНА ДЛЯ ОТРИСОВКИ
-      switch (systemState) {
-        case 0: // STATE_MAIN - главный экран с температурами
-          if (sysData.mode == 0) {
-            updateDisplayMODE1();
-          } else {
-            switch (guildColorState) {
-              case 0: updateDisplayMODE2_GREEN(); break;
-              case 1: updateDisplayMODE2_YELLOW(); break;
-              case 2: updateDisplayMODE2_RED(); break;
-              default: updateDisplayMODE1(); break;
-            }
-          }
-          break;
-          
-        case 1: // STATE_MODE - экран выбора режима
-          // ЗАГЛУШКА: временно просто очищаем экран и пишем текст
-          // TODO: реализовать полноценную отрисовку с курсором
-          tft.fillScreen(COLOR_BLACK);
-          tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
-          tft.setTextFont(FONT_BIG);
-          tft.setCursor(50, 50);
-          tft.printf("Выбор режима: %s", selectedModeIndex == 0 ? "MODE1" : "MODE2");
-          tft.setCursor(50, 100);
-          tft.printf("Текущий: %s", sysData.mode == 0 ? "MODE1" : "MODE2");
-          tft.setCursor(50, 150);
-          tft.print("Кнопка - назад, 2xКнопка - применить");
-          break;
-          
-        default:
-          // Если по какой-то причине неизвестное состояние - показываем главный экран
-          systemState = 0;
-          updateDisplayMODE1();
-          break;
-      }
-      
-      lastUpdateTime = currentMillis;
-      forceDisplayRedraw = false; // Сбрасываем флаг после отрисовки
-    }
 
-    // 8. КОРОТКАЯ ПАУЗА ДЛЯ ДРУГИХ ЗАДАЧ (без изменений)
-    vTaskDelay(pdMS_TO_TICKS(20));
+      // 7. ВЫБОР ФУНКЦИИ ОТРИСОВКИ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ
+      if (newDataReceived || (currentMillis - lastUpdateTime >= DISPLAY_UPDATE_MS) || forceDisplayRedraw) {
+
+        // ОБНОВЛЕНИЕ ЦВЕТОВОГО СОСТОЯНИЯ (для MODE2, без изменений)
+        if (sysData.mode == 1 && sensors[3].found && guildBaseTemp != 0.0f) {
+          float currentGuildTemp = 0.0f;
+          if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            currentGuildTemp = sysData.temps[3];
+            xSemaphoreGive(dataMutex);
+          }
+          if (isValidTemperature(currentGuildTemp)) {
+            mode2_update_color_state(currentGuildTemp);
+          }
+        }
+
+        // ВЫБОР ЭКРАНА ДЛЯ ОТРИСОВКИ
+        switch (systemState) {
+          case 0:  // STATE_MAIN - главный экран с температурами
+            if (sysData.mode == 0) {
+              updateDisplayMODE1();
+            } else {
+              switch (guildColorState) {
+                case 0: updateDisplayMODE2_GREEN(); break;
+                case 1: updateDisplayMODE2_YELLOW(); break;
+                case 2: updateDisplayMODE2_RED(); break;
+                default: updateDisplayMODE1(); break;
+              }
+            }
+            break;
+
+          case 1:  // STATE_MODE - экран выбора режима
+            // ЗАГЛУШКА: временно просто очищаем экран и пишем текст
+            // TODO: реализовать полноценную отрисовку с курсором
+            tft.fillScreen(COLOR_BLACK);
+            tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+            tft.setTextFont(FONT_BIG);
+            tft.setCursor(50, 50);
+            tft.printf("Выбор режима: %s", selectedModeIndex == 0 ? "MODE1" : "MODE2");
+            tft.setCursor(50, 100);
+            tft.printf("Текущий: %s", sysData.mode == 0 ? "MODE1" : "MODE2");
+            tft.setCursor(50, 150);
+            tft.print("Кнопка - назад, 2xКнопка - применить");
+            break;
+
+          default:
+            // Если по какой-то причине неизвестное состояние - показываем главный экран
+            systemState = 0;
+            updateDisplayMODE1();
+            break;
+        }
+
+        lastUpdateTime = currentMillis;
+        forceDisplayRedraw = false;  // Сбрасываем флаг после отрисовки
+      }
+
+      // 8. КОРОТКАЯ ПАУЗА ДЛЯ ДРУГИХ ЗАДАЧ (без изменений)
+      vTaskDelay(pdMS_TO_TICKS(20));
+    }
   }
 }
 
@@ -423,7 +443,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 100);
     tft.print("ОШИБКА: EncoderTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000)); // ИСПРАВЛЕНО: замена delay
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));  // ИСПРАВЛЕНО: замена delay
   }
   Serial.println("✅ Задача энкодера создана (приоритет 4, ядро 1, стек 4KB)");
 
@@ -441,7 +461,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 120);
     tft.print("ОШИБКА: MeasureTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000)); // ИСПРАВЛЕНО: замена delay
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));  // ИСПРАВЛЕНО: замена delay
   }
   Serial.println("✅ Задача измерений создана (приоритет 3, ядро 1, стек 8KB)");
 
@@ -459,7 +479,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 140);
     tft.print("ОШИБКА: DisplayTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000)); // ИСПРАВЛЕНО: замена delay
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));  // ИСПРАВЛЕНО: замена delay
   }
   Serial.println("✅ Задача дисплея создана (приоритет 2, ядро 1, стек 12KB)");
 
@@ -477,7 +497,7 @@ void create_rtos_tasks() {
     tft.fillScreen(COLOR_RED);
     tft.setCursor(20, 160);
     tft.print("ОШИБКА: SerialTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000)); // ИСПРАВЛЕНО: замена delay
+    while (1) vTaskDelay(pdMS_TO_TICKS(1000));  // ИСПРАВЛЕНО: замена delay
   }
   Serial.println("✅ Задача Serial создана (приоритет 1, ядро 1, стек 4KB)");
 
