@@ -1,0 +1,23 @@
+﻿# Временные файлы компиляции Arduino
+build-*/
+*.elf
+*.bin
+*.hex
+*.eep
+
+# Конфиденциальные данные и локальные настройки
+system_config.h
+*.secret
+*.private
+/secrets/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Среда разработки / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
