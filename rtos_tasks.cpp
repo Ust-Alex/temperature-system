@@ -1,6 +1,4 @@
-/**
- * ============================================================================
- * ФАЙЛ: rtos_tasks.cpp
+/** * ФАЙЛ: rtos_tasks.cpp
  * ОСНОВНОЙ ФАЙЛ ЗАДАЧ FREERTOS ДЛЯ СИСТЕМЫ МОНИТОРИНГА ТЕМПЕРАТУР
  * 
  * ВЕРСИЯ: 4.0 (С ИНТЕГРАЦИЕЙ ЭНКОДЕРА)
@@ -16,6 +14,8 @@
  */
 
 #include "rtos_tasks.h"
+#include "measurement_task.h"
+#include "sensors.h"
 #include "encoder_engine.h"  // Модуль для работы с энкодером (новая библиотека)
 #include "calibration_simple.h"
 
@@ -79,190 +79,6 @@ void taskEncoder(void* pv) {
   }
 }
 
-// ЗАДАЧА ИЗМЕРЕНИЙ
-// ============================================================================
-void taskMeasure(void* pv) {
-  uint32_t lastDeltaTime = 0;
-  float lastTemps[4] = { 0, 0, 0, 0 };
-  uint32_t lastReconnectAttempt = 0;
-  uint32_t lastHeartbeat = 0;
-  uint32_t measurementCount = 0;
-
-  Serial.println("📡 Задача измерений запущена (оптимизированная версия)");
-
-  while (1) {
-    // ФИКСИРУЕМ НАЧАЛО ЦИКЛА
-    TickType_t cycleStartTime = xTaskGetTickCount();
-    
-    // АКТУАЛЬНОЕ ВРЕМЯ ДЛЯ ВСЕГО ЦИКЛА
-    uint32_t currentMillis = pdTICKS_TO_MS(xTaskGetTickCount());
-    measurementCount++;
-
-    // 1. HEARTBEAT ДЛЯ ОТЛАДКИ
-    if (currentMillis - lastHeartbeat > HEARTBEAT_INTERVAL) {
-      // Serial.printf("[MEASURE] Heartbeat: %lu ms, измерений: %lu\n",
-      //               currentMillis, measurementCount);
-      lastHeartbeat = currentMillis;
-    }
-
-    // 2. ПРОВЕРКА ИНИЦИАЛИЗАЦИИ СИСТЕМЫ
-    if (!systemInitialized) {
-      vTaskDelay(pdMS_TO_TICKS(MEASURE_INTERVAL));
-      continue;
-    }
-
-    // 3. ПЕРИОДИЧЕСКАЯ ПОПЫТКА ПЕРЕПОДКЛЮЧЕНИЯ ДАТЧИКОВ
-    if (currentMillis - lastReconnectAttempt > RECONNECT_INTERVAL) {
-      attemptReconnect();
-      lastReconnectAttempt = currentMillis;
-    }
-
-    // 4. ПРОВЕРКА КРИТИЧЕСКОЙ ОШИБКИ (ОТСУТСТВИЕ ГИЛЬЗЫ)
-    if (criticalError || !sensors[3].found) {
-      vTaskDelay(pdMS_TO_TICKS(MEASURE_INTERVAL));
-      continue;
-    }
-
-    // 5. ЗАПРОС ТЕМПЕРАТУР С ДАТЧИКОВ
-    if (sensors[3].found) {
-      sensorsA.requestTemperatures();
-    }
-
-    bool busBNeeded = false;
-    for (int i = 0; i < 3; i++) {
-      if (sensors[i].found) {
-        busBNeeded = true;
-        break;
-      }
-    }
-
-    if (busBNeeded) {
-      sensorsB.requestTemperatures();
-    }
-
-    // 6. ОЖИДАНИЕ КОНВЕРСИИ (375 мс ДЛЯ 11 БИТ)
-    vTaskDelay(pdMS_TO_TICKS(CONVERSION_DELAY_MS));
-
-    // 7. ЧТЕНИЕ И ОБРАБОТКА ДАННЫХ С ДАТЧИКОВ
-    bool deltaTimeUpdated = false;
-    
-    // ОБНОВЛЯЕМ ВРЕМЯ ПЕРЕД ПРОВЕРКОЙ ДЕЛЬТЫ
-    currentMillis = pdTICKS_TO_MS(xTaskGetTickCount());
-
-    // 7.1 ЧТЕНИЕ ГИЛЬЗЫ (шина A, всегда 1 датчик)
-    if (sensors[3].found) {
-      float rawTemp = sensorsA.getTempCByIndex(0);
-      
-      if (rawTemp == DEVICE_DISCONNECTED_C || !isValidTemperature(rawTemp)) {
-        sensors[3].temp = TEMP_NO_DATA;
-        safeUpdateSystemData(3, TEMP_NO_DATA, 0.0f);
-        sensors[3].lostTimer++;
-        
-        if (sensors[3].lostTimer > 10) {
-          sensors[3].found = false;
-          criticalError = true;
-          systemInitialized = false;
-        }
-      } else {
-        sensors[3].lostTimer = 0;
-        // sensors[3].temp = filterValue(3, rawTemp);
-        sensors[3].temp = filterValueWithCalibration(3, rawTemp);
-
-        // РАСЧЕТ ДЕЛЬТЫ
-        if (currentMillis - lastDeltaTime > DELTA_CALC_INTERVAL) {
-          float delta = 0.0f;
-          if (lastTemps[3] != 0 && lastTemps[3] != TEMP_NO_DATA) {
-            delta = sensors[3].temp - lastTemps[3];
-          }
-          safeUpdateSystemData(3, sensors[3].temp, delta);
-          lastTemps[3] = sensors[3].temp;
-          deltaTimeUpdated = true;
-        } else {
-          safeUpdateSystemData(3, sensors[3].temp, sysData.deltas[3]);
-        }
-      }
-    } else {
-      safeUpdateSystemData(3, TEMP_CRITICAL_LOST, 0.0f);
-    }
-
-    // 7.2 ЧТЕНИЕ СТЕНОК (шина B, от 0 до 3 датчиков)
-    for (int i = 0; i < 3; i++) {
-      if (sensors[i].found) {
-        float rawTemp = sensorsB.getTempCByIndex(i);
-        
-        if (rawTemp == DEVICE_DISCONNECTED_C || !isValidTemperature(rawTemp)) {
-          sensors[i].temp = TEMP_NO_DATA;
-          safeUpdateSystemData(i, TEMP_NO_DATA, 0.0f);
-          sensors[i].lostTimer++;
-          
-          if (sensors[i].lostTimer > 10) {
-            sensors[i].found = false;
-          }
-        } else {
-          sensors[i].lostTimer = 0;
-          // sensors[i].temp = filterValue(i, rawTemp);
-          sensors[i].temp = filterValueWithCalibration(i, rawTemp);
-
-          // РАСЧЕТ ДЕЛЬТЫ
-          if (currentMillis - lastDeltaTime > DELTA_CALC_INTERVAL) {
-            float delta = 0.0f;
-            if (lastTemps[i] != 0 && lastTemps[i] != TEMP_NO_DATA) {
-              delta = sensors[i].temp - lastTemps[i];
-            }
-            safeUpdateSystemData(i, sensors[i].temp, delta);
-            lastTemps[i] = sensors[i].temp;
-            deltaTimeUpdated = true;
-          } else {
-            safeUpdateSystemData(i, sensors[i].temp, sysData.deltas[i]);
-          }
-        }
-      } else {
-        safeUpdateSystemData(i, TEMP_SENSOR_LOST, 0.0f);
-      }
-    }
-
-    // 8. СБРОС ТАЙМЕРА ДЕЛЬТЫ ЕСЛИ БЫЛ РАСЧЕТ
-    if (deltaTimeUpdated) {
-      lastDeltaTime = currentMillis;
-    }
-
-    // 9. ОТПРАВКА ДАННЫХ В ОЧЕРЕДЬ ДЛЯ ДИСПЛЕЯ
-    currentMillis = pdTICKS_TO_MS(xTaskGetTickCount());
-    if (dataQueue != NULL) {
-      SystemData_t dataToSend;
-      safeReadSystemData(&dataToSend);
-
-      if (xQueueSend(dataQueue, &dataToSend, 0) != pdTRUE) {
-        static uint32_t lastQueueError = 0;
-        if (currentMillis - lastQueueError > 5000) {
-          lastQueueError = currentMillis;
-        }
-      }
-    }
-
-    // 10. ОБНОВЛЕНИЕ ТАЙМЕРА СТАБИЛИЗАЦИИ ДЛЯ MODE1
-    if (sysData.mode == 0 && sensors[3].found) {
-      float guildTemp = sysData.temps[3];
-      mode1_update_stabilization_timer(guildTemp);
-    }
-
-    // 11. ТОЧНЫЙ ЦИКЛ 500 мс
-    TickType_t now = xTaskGetTickCount();
-    TickType_t elapsed = now - cycleStartTime;
-    TickType_t targetCycle = pdMS_TO_TICKS(MEASURE_INTERVAL);
-
-    // РАСЧЕТ ОСТАВШЕГОСЯ ВРЕМЕНИ
-    if (elapsed < targetCycle) {
-      vTaskDelay(targetCycle - elapsed);
-    }
-    
-    // ДИАГНОСТИКА (можно включить при необходимости)
-    // uint32_t actualCycle = pdTICKS_TO_MS(xTaskGetTickCount() - cycleStartTime);
-    // if (actualCycle > 600 || actualCycle < 400) {
-    //   Serial.printf("[CYCLE] Фактический цикл: %lu мс\n", actualCycle);
-    // }
-  }
-}
 
 // ============================================================================
 // ЗАДАЧА ДИСПЛЕЯ (ПЕРЕРАБОТАНА ДЛЯ ПОДДЕРЖКИ ЭНКОДЕРА И МАШИНЫ СОСТОЯНИЙ)
