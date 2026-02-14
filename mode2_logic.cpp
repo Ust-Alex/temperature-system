@@ -1,10 +1,8 @@
 #include "mode2_logic.h"
-
-// ============================================================================
-// ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ
-// ============================================================================
-static uint32_t mode2_timer_start_ms = 0;
-static bool mode2_timer_running = false;
+#include "eeprom_settings.h"  // <-- ДОБАВЛЕНО
+#include "globals.h"
+#include "system_config.h"
+#include "measurement_core.h"
 
 // ============================================================================
 // ПУБЛИЧНЫЕ ФУНКЦИИ
@@ -24,27 +22,32 @@ void mode2_update_color_state(float currentGuildTemp) {
         if (isValidTemperature(currentGuildTemp)) {
             float diff = currentGuildTemp - guildBaseTemp;
             
+            // Получаем актуальные пороги из настроек
+            float greenThreshold = settings_get_green_threshold();
+            float yellowThreshold = settings_get_yellow_threshold();
+            float hysteresis = settings_get_hysteresis();
+            
             // Обновляем состояние с гистерезисом
             switch (guildColorState) {
                 case 0: // ЗЕЛЁНЫЙ
-                    if (diff >= (GREEN_TO_YELLOW_THRESHOLD + HYSTERESIS_VALUE)) {
+                    if (diff >= (greenThreshold + hysteresis)) {
                         guildColorState = 1;
                         forceDisplayRedraw = true;
                     }
                     break;
                     
                 case 1: // ЖЁЛТЫЙ
-                    if (diff >= (YELLOW_TO_RED_THRESHOLD + HYSTERESIS_VALUE)) {
+                    if (diff >= (yellowThreshold + hysteresis)) {
                         guildColorState = 2;
                         forceDisplayRedraw = true;
-                    } else if (diff <= (GREEN_TO_YELLOW_THRESHOLD - HYSTERESIS_VALUE)) {
+                    } else if (diff <= (greenThreshold - hysteresis)) {
                         guildColorState = 0;
                         forceDisplayRedraw = true;
                     }
                     break;
                     
                 case 2: // КРАСНЫЙ
-                    if (diff <= (YELLOW_TO_RED_THRESHOLD - HYSTERESIS_VALUE)) {
+                    if (diff <= (yellowThreshold - hysteresis)) {
                         guildColorState = 1;
                         forceDisplayRedraw = true;
                     }
@@ -57,4 +60,3 @@ void mode2_update_color_state(float currentGuildTemp) {
 uint8_t mode2_get_current_color_state() {
     return guildColorState;
 }
-
