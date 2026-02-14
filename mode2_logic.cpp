@@ -58,39 +58,3 @@ uint8_t mode2_get_current_color_state() {
     return guildColorState;
 }
 
-// ============================================================================
-// ФУНКЦИИ ТАЙМЕРА MODE2
-// ============================================================================
-
-void mode2_timer_start() {
-    mode2_timer_start_ms = millis();
-    mode2_timer_running = true;
-    Serial.println("[MODE2] Таймер запущен");
-}
-
-void mode2_timer_stop() {
-    mode2_timer_running = false;
-    Serial.println("[MODE2] Таймер остановлен");
-}
-
-void mode2_timer_reset() {
-    mode2_timer_start_ms = millis();
-    Serial.println("[MODE2] Таймер сброшен");
-}
-
-String mode2_timer_get_formatted() {
-    if (!mode2_timer_running) return "00:00";
-    
-    uint32_t elapsed = millis() - mode2_timer_start_ms;
-    uint32_t minutes = elapsed / 60000UL;
-    uint8_t hours = minutes / 60;
-    uint8_t mins = minutes % 60;
-    
-    char buffer[6];
-    snprintf(buffer, sizeof(buffer), "%02d:%02d", hours, mins);
-    return String(buffer);
-}
-
-bool mode2_timer_is_active() {
-    return mode2_timer_running;
-}
