@@ -1,25 +1,35 @@
 #ifndef DISPLAY_ENGINE_H
 #define DISPLAY_ENGINE_H
 
-#include "system_config.h"
-#include "mode2_logic.h"
+#include <Arduino.h>
+#include <TFT_eSPI.h>
 
-// СУЩЕСТВУЮЩИЕ ФУНКЦИИ (без изменений):
+// ============================================================================
+// ОСНОВНЫЕ ФУНКЦИИ УПРАВЛЕНИЯ ДИСПЛЕЕМ
+// ============================================================================
+
+/**
+ * ЗАДАЧА ДИСПЛЕЯ (ДЛЯ FREERTOS)
+ * Основной цикл обновления экрана
+ */
+void taskDisplay(void* pvParameters);
+
+/**
+ * ПОЛНАЯ ПЕРЕРИСОВКА ДИСПЛЕЯ
+ * Заливает экран текущим цветом фона и сбрасывает кэш
+ */
 void performFullDisplayRedraw();
-void clearTemperatureArea(int y, uint16_t bgColor);
-void clearDeltaArea(int y, const char* deltaStr, uint16_t bgColor);
-void drawTemperature(int y, float temp, uint16_t textColor, uint16_t bgColor);
-void drawDelta(int y, float delta, uint16_t textColor, uint16_t bgColor);
-void updateDisplayMODE1();
-void updateDisplayMODE2_Common(uint16_t bgColor, uint16_t textColor);
-void updateDisplayMODE2_GREEN();
-void updateDisplayMODE2_YELLOW();
-void updateDisplayMODE2_RED();
+
+/**
+ * ОПРЕДЕЛЕНИЕ ТЕКУЩЕГО ЦВЕТА ФОНА
+ * Возвращает цвет в зависимости от режима и состояния
+ */
 uint16_t getCurrentBackgroundColor();
+
+/**
+ * СБРОС СОСТОЯНИЯ ДИСПЛЕЯ ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМА
+ * @param newMode - новый режим (0 = MODE1, 1 = MODE2)
+ */
 void resetDisplayState(uint8_t newMode);
 
-// НОВЫЕ ФУНКЦИИ ДЛЯ ЭКРАНА ВЫБОРА РЕЖИМА:
-void updateDisplayMODE_select(uint8_t selectedIndex, uint8_t currentMode);
-// TODO: добавить функции для других экранов (меню, настройки и т.д.)
-
-#endif
+#endif // DISPLAY_ENGINE_H

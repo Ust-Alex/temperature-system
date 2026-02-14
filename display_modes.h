@@ -2,28 +2,44 @@
 #define DISPLAY_MODES_H
 
 #include <Arduino.h>
+#include <TFT_eSPI.h>
 
 // ============================================================================
-// РЕЖИМ СТАБИЛИЗАЦИИ (MODE1)
+// РЕЖИМ СТАБИЛИЗАЦИИ (MODE1) - СИНИЙ ФОН
 // ============================================================================
-void display_mode1_update();              // Основная функция обновления MODE1
-void display_mode1_draw_time();           // Отрисовка таймера
-void display_mode1_draw_sensor(int idx, int y, float temp, float delta); // Отрисовка одного датчика
+
+/**
+ * ОТРИСОВКА ТАЙМЕРА СТАБИЛИЗАЦИИ ДЛЯ MODE1
+ * Выводит время в правом верхнем углу (формат ЧЧ:ММ)
+ */
+void display_mode1_draw_time();
+
+/**
+ * ОТРИСОВКА ОДНОГО ДАТЧИКА В РЕЖИМЕ MODE1
+ * 
+ * @param idx - индекс датчика (0-3)
+ * @param y - вертикальная координата области
+ * @param temp - температура для отображения
+ * @param delta - дельта для отображения
+ */
+void display_mode1_draw_sensor(int idx, int y, float temp, float delta);
 
 // ============================================================================
-// РАБОЧИЙ РЕЖИМ (MODE2)
+// РАБОЧИЙ РЕЖИМ (MODE2) - ЦВЕТ МЕНЯЕТСЯ
 // ============================================================================
-void display_mode2_update();              // Основная функция обновления MODE2
-void display_mode2_set_colors();          // Установка цветов в зависимости от состояния
-void display_mode2_draw_sensor(int idx, int y, float temp, float delta); // Отрисовка одного датчика
 
-// ============================================================================
-// ОБЩИЕ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (могут использоваться обоими режимами)
-// ============================================================================
-void display_draw_temperature(int y, float temp, uint16_t textColor, uint16_t bgColor);
-void display_draw_delta(int y, float delta, uint16_t textColor, uint16_t bgColor);
-void display_clear_temperature_area(int y, uint16_t bgColor);
-void display_clear_delta_area(int y, const char* deltaStr, uint16_t bgColor);
-bool display_is_valid_temperature(float temp);
+/**
+ * ОТРИСОВКА ОДНОГО ДАТЧИКА В РЕЖИМЕ MODE2
+ * Цвета текста и фона передаются параметрами, так как зависят от состояния
+ * 
+ * @param idx - индекс датчика (0-3)
+ * @param y - вертикальная координата области
+ * @param temp - температура для отображения
+ * @param delta - дельта для отображения
+ * @param bgColor - цвет фона (зелёный/жёлтый/красный)
+ * @param textColor - цвет текста (чёрный или белый)
+ */
+void display_mode2_draw_sensor(int idx, int y, float temp, float delta, 
+                               uint16_t bgColor, uint16_t textColor);
 
-#endif
+#endif // DISPLAY_MODES_H
