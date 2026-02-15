@@ -1,238 +1,93 @@
-/** * ============================================================================
+/**
+ * ============================================================================
  * ФАЙЛ: temperature_system.ino
- * ГЛАВНЫЙ ФАЙЛ ПРОЕКТА - ТОЧКА ВХОДА СИСТЕМЫ КОНТРОЛЯ ТЕМПЕРАТУРЫ
+ * ГЛАВНЫЙ ФАЙЛ ПРОЕКТА - ТОЧКА ВХОДА
  * 
- * ВЕРСИЯ: 5.1 (С ИСПРАВЛЕННЫМ ПОРЯДКОМ ИНИЦИАЛИЗАЦИИ MP3)
- * 
- * ОСОБЕННОСТИ:
- * 1. Точка входа Arduino (setup() и loop())
- * 2. Объявления всех глобальных переменных и объектов
- * 3. Инициализация MP3 ПЕРЕД аппаратурой (чтобы звук ошибки работал)
- * 4. Фоновый мониторинг состояния системы
- * 5. Поддержка MP3-проигрывателя для звукового сопровождения
+ * ВЕРСИЯ: 5.2 (УДАЛЁН ТЕСТОВЫЙ ЗВУК)
  * ============================================================================
  */
 
-// Основные заголовочные файлы системы
 #include "eeprom_settings.h"
-#include "system_config.h"  // Конфигурация пинов и параметров системы
-#include "rtos_tasks.h"     // Задачи FreeRTOS и их создание
+#include "system_config.h"
+#include "rtos_tasks.h"
 #include "calibration_simple.h"
-#include "mp3_player.h"  // Модуль MP3-проигрывателя
+#include "mp3_player.h"
 #include "mode2_timer.h"
 #include "sensors.h"
 
-// ============================================================================
-// ФУНКЦИЯ SETUP(): ОДНОКРАТНАЯ ИНИЦИАЛИЗАЦИЯ ПРИ ЗАПУСКЕ СИСТЕМЫ
-// ============================================================================
-
 void setup() {
-  // НАЧАЛО ИНИЦИАЛИЗАЦИИ - КРИТИЧЕСКИ ВАЖНЫЙ ЭТАП
-  // ------------------------------------------------------------
-
-  // ШАГ 1: ИНИЦИАЛИЗАЦИЯ ПОСЛЕДОВАТЕЛЬНОГО ПОРТА (Serial)
   Serial.begin(115200);
-  delay(2000);  // Критическая задержка для стабилизации ESP32 и подключения Serial монитора
+  delay(2000);
 
-  settings_init();  // Инициализация настроек
+  settings_init();
   
   Serial.println("\n" + String(70, '='));
-  Serial.println("🚀 ЗАПУСК СИСТЕМЫ КОНТРОЛЯ ТЕМПЕРАТУРЫ (ВЕРСИЯ 5.1)");
-  Serial.println("🎵 С ПОДДЕРЖКОЙ MP3-ПРОИГРЫВАТЕЛЯ (исправленный порядок)");
+  Serial.println("🚀 СИСТЕМА КОНТРОЛЯ ТЕМПЕРАТУРЫ v5.2");
   Serial.println(String(70, '='));
 
-  // ШАГ 2: АППАРАТНАЯ ДИАГНОСТИКА ПЕРЕД ИНИЦИАЛИЗАЦИЕЙ
+  // Аппаратная диагностика
   Serial.println("\n🔍 ПРЕДВАРИТЕЛЬНАЯ ДИАГНОСТИКА:");
+  Serial.printf("  Датчик гильзы: GPIO%d\n", ONE_WIRE_BUS_A);
+  Serial.printf("  Датчики стенок: GPIO%d\n", ONE_WIRE_BUS_B);
 
-  // 2.1 Проверка пинов датчиков температуры
-  Serial.printf("  Датчик гильзы: GPIO%d (ONE_WIRE_BUS_A)\n", ONE_WIRE_BUS_A);
-  Serial.printf("  Датчики стенок: GPIO%d (ONE_WIRE_BUS_B)\n", ONE_WIRE_BUS_B);
-
-  // 2.2 Проверка напряжения на пинах
   pinMode(ONE_WIRE_BUS_A, INPUT_PULLUP);
   pinMode(ONE_WIRE_BUS_B, INPUT_PULLUP);
   delay(50);
 
-  int voltageA = digitalRead(ONE_WIRE_BUS_A);
-  int voltageB = digitalRead(ONE_WIRE_BUS_B);
-
-  Serial.printf("  Напряжение GPIO%d: %s\n", ONE_WIRE_BUS_A,
-                voltageA == HIGH ? "HIGH ✅" : "LOW ⚠️ (возможная проблема!)");
-  Serial.printf("  Напряжение GPIO%d: %s\n", ONE_WIRE_BUS_B,
-                voltageB == HIGH ? "HIGH ✅" : "LOW ⚠️ (возможная проблема!)");
-
-  // 2.3 Критическая проверка: если пины прижаты к GND - есть проблема с подключением
-  if (voltageA == LOW || voltageB == LOW) {
+  if (digitalRead(ONE_WIRE_BUS_A) == LOW || digitalRead(ONE_WIRE_BUS_B) == LOW) {
     Serial.println("\n❌ КРИТИЧЕСКАЯ ОШИБКА АППАРАТУРЫ!");
-    Serial.println("   Пины датчиков показывают LOW (прижаты к GND)");
-    Serial.println("   СИСТЕМА НЕ БУДЕТ ЗАПУЩЕНА ДО ИСПРАВЛЕНИЯ!");
-    Serial.println(String(70, '='));
-
-    while (true) {
-      delay(1000);
-      Serial.print(".");
-    }
+    while (true) delay(1000);
   }
 
-  // ШАГ 3: ИНИЦИАЛИЗАЦИЯ MP3-ПРОИГРЫВАТЕЛЯ (ПЕРВЫМ!)
-  // Должна выполняться ДО initHardware(), чтобы звук ошибки работал
-  Serial.println("\n[MP3] Инициализация звукового модуля...");
+  // Инициализация MP3 (ПЕРВОЙ!)
+  Serial.println("\n[MP3] Инициализация...");
   if (initMP3Player()) {
-    Serial.println("🎵 MP3-проигрыватель инициализирован успешно");
+    Serial.println("✅ MP3-проигрыватель готов");
   } else {
-    Serial.println("⚠️  MP3-проигрыватель не обнаружен (работаем без звука)");
+    Serial.println("⚠️ MP3 не обнаружен");
   }
 
-  // ШАГ 4: ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ АППАРАТУРЫ
-  Serial.println("\n✅ MP3-модуль готов");
-  Serial.println("🔄 Запуск основной инициализации аппаратуры...");
-
-  initHardware();  // Инициализация дисплея, датчиков, энкодера
-
+  // Основная инициализация аппаратуры
+  Serial.println("\n🔄 Запуск основной инициализации...");
+  initHardware();
   loadOffsetsFromEEPROM();
 
-  // ШАГ 5: ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ПОСЛЕ ИНИЦИАЛИЗАЦИИ
-  Serial.println("\n[INIT] Проверка состояния системы после инициализации:");
-
-  if (!sensors[3].found) {
-    Serial.println("⚠️  ВНИМАНИЕ: Датчик гильзы не обнаружен после инициализации");
-    Serial.println("   Система попытается найти его автоматически позже");
-  }
-
-  // ШАГ 6: СОЗДАНИЕ ЗАДАЧ FREERTOS
-  Serial.println("\n[INIT] Создание задач FreeRTOS...");
+  // Создание задач FreeRTOS
+  Serial.println("\n[INIT] Создание задач...");
   create_rtos_tasks();
 
-  // СОЗДАНИЕ ЗАДАЧИ MP3-ПРОИГРЫВАТЕЛЯ
-  // Создаём только если плеер успешно инициализирован
+  // Запуск задачи MP3
   if (mp3PlayerReady && mp3CommandQueue != NULL) {
-    xTaskCreate(
-      taskMP3,       // Функция задачи (из mp3_player.cpp)
-      "MP3 Player",  // Имя задачи для отладки
-      4096,          // Размер стека (байт) - достаточно для DFPlayer
-      NULL,          // Параметры (не нужны)
-      1,             // ПРИОРИТЕТ: 1 (низкий - звук не критичен)
-      NULL           // Дескриптор задачи (не сохраняем)
-    );
-    Serial.println("🎵 Задача MP3 создана (приоритет: 1)");
+    xTaskCreate(taskMP3, "MP3 Player", 4096, NULL, 1, NULL);
+    Serial.println("✅ Задача MP3 создана");
 
-    // КОРОТКАЯ ПАУЗА, чтобы команды из findSensors() обработались первыми
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // ОТПРАВКА КОМАНДЫ НА СТАРТОВЫЙ ЗВУК (трек 1)
-    Mp3Command_t startSound;
-    startSound.cmd = MP3_CMD_PLAY_TRACK;
-    startSound.param = 1;  // Трек 0001.mp3
-
-    if (sendMP3Command(startSound)) {
-      Serial.println("🎵 Команда на воспроизведение трека #1 отправлена");
-    } else {
-      Serial.println("⚠️  Не удалось отправить команду стартового звука");
-    }
-
-    // ТЕСТОВАЯ КОМАНДА: проверим работу очереди через 3 секунды
-    // Можно удалить после тестирования
-    vTaskDelay(pdMS_TO_TICKS(3000));
-    Serial.println("\n[TEST] Отправка тестовой команды MP3...");
-    Mp3Command_t testCmd = { MP3_CMD_PLAY_TRACK, 2 };  // 0002.mp3
-    if (sendMP3Command(testCmd)) {
-      Serial.println("[TEST] Тестовая команда отправлена (трек 2)");
-    }
-
-  } else {
-    Serial.println("⚠️  Задача MP3 не создана (плеер не готов или очередь не создана)");
-    Serial.printf("   mp3PlayerReady=%d, mp3CommandQueue=%p\n",
-                  mp3PlayerReady, mp3CommandQueue);
+    // ТОЛЬКО СТАРТОВЫЙ ТРЕК
+    Mp3Command_t startSound = {MP3_CMD_PLAY_TRACK, 1};
+    sendMP3Command(startSound);
+    Serial.println("🎵 Стартовый трек #1 отправлен");
   }
 
-  // ШАГ 7: ФИНАЛЬНОЕ СООБЩЕНИЕ О ЗАПУСКЕ
+  // Финальное сообщение
   Serial.println("\n" + String(70, '='));
-  Serial.println("✅ СИСТЕМА УСПЕШНО ЗАПУЩЕНА");
-  Serial.println("📊 Основные характеристики:");
-  Serial.printf("   - Режим: %s\n", sysData.mode == 0 ? "СТАБИЛИЗАЦИЯ (MODE1)" : "РАБОЧИЙ (MODE2)");
-  Serial.printf("   - Датчик гильзы: %s\n", sensors[3].found ? "ОБНАРУЖЕН ✅" : "НЕ НАЙДЕН ⚠️");
-  Serial.printf("   - MP3-проигрыватель: %s\n", mp3PlayerReady ? "ГОТОВ ✅" : "НЕДОСТУПЕН ⚠️");
-  Serial.printf("   - Инициализирована: %s\n", systemInitialized ? "ДА ✅" : "НЕТ ⚠️");
-  Serial.printf("   - Критическая ошибка: %s\n", criticalError ? "ДА ❌" : "НЕТ ✅");
-  Serial.println(String(70, '='));
-  Serial.println("\n🎛️  Команды управления (введите в Serial монитор):");
-  Serial.println("   FIND    - Принудительный поиск датчиков");
-  Serial.println("   STATUS  - Подробный статус системы");
-  Serial.println("   MODE1   - Режим стабилизации");
-  Serial.println("   MODE2   - Рабочий режим");
-  Serial.println("   HELP    - Полный список команд");
+  Serial.println("✅ СИСТЕМА ЗАПУЩЕНА");
   Serial.println(String(70, '=') + "\n");
 }
 
-// ============================================================================
-// ФУНКЦИЯ LOOP(): ОСНОВНОЙ ЦИКЛ ARDUINO (ФОНОВЫЙ МОНИТОРИНГ)
-// ============================================================================
-
 void loop() {
   static uint32_t lastSystemCheck = 0;
-  static uint32_t lastSensorCheck = 0;
-  static uint32_t lastMP3Check = 0;  // НОВОЕ: для мониторинга состояния MP3
   uint32_t currentMillis = millis();
 
-  // ПРОВЕРКА 1: ПЕРИОДИЧЕСКИЙ СТАТУС СИСТЕМЫ (каждые 5 минут)
+  // Периодическая проверка (раз в 5 минут)
   if (currentMillis - lastSystemCheck > 300000) {
-    Serial.println("\n[SYSTEM CHECK] " + String(55, '='));
-    Serial.printf("Время работы: %lu минут %lu секунд\n",
-                  currentMillis / 60000, (currentMillis % 60000) / 1000);
-    Serial.printf("Текущий режим: %d (%s)\n",
+    Serial.println("\n[SYSTEM CHECK]");
+    Serial.printf("Режим: %d, Гильза: %s, Ошибка: %s\n",
                   sysData.mode,
-                  sysData.mode == 0 ? "СТАБИЛИЗАЦИЯ" : "РАБОЧИЙ");
-    Serial.printf("Датчик гильзы: %s\n",
-                  sensors[3].found ? "НАЙДЕН ✅" : "ПОТЕРЯН ❌");
-    Serial.printf("MP3-проигрыватель: %s\n",  // НОВОЕ
-                  mp3PlayerReady ? "ГОТОВ ✅" : "ОТКЛЮЧЕН ⚠️");
-    Serial.printf("Система инициализирована: %s\n",
-                  systemInitialized ? "ДА ✅" : "НЕТ ⚠️");
-    Serial.printf("Критическая ошибка: %s\n",
-                  criticalError ? "ДА ❌ (гильза!)" : "НЕТ ✅");
-    Serial.printf("Очередь данных: %s\n",
-                  dataQueue ? "СОЗДАНА ✅" : "ОТСУТСТВУЕТ ❌");
-    Serial.printf("Очередь MP3: %s\n",  // НОВОЕ
-                  mp3CommandQueue ? "СОЗДАНА ✅" : "ОТСУТСТВУЕТ ❌");
-    Serial.println(String(55, '=') + "\n");
-
+                  sensors[3].found ? "✅" : "❌",
+                  criticalError ? "❌" : "✅");
     lastSystemCheck = currentMillis;
   }
 
-  // ПРОВЕРКА 2: АВТОМАТИЧЕСКИЙ ПОИСК ДАТЧИКОВ ПРИ ДЛИТЕЛЬНОЙ ПОТЕРЕ
-  if (currentMillis - lastSensorCheck > 60000) {
-    bool anySensorFound = false;
-    for (int i = 0; i < 4; i++) {
-      if (sensors[i].found) {
-        anySensorFound = true;
-        break;
-      }
-    }
-
-    if (!anySensorFound) {
-      Serial.println("\n⚠️  [AUTO-RECONNECT] Все датчики потеряны более 1 минуты");
-      Serial.println("   Попытка автоматического восстановления...");
-
-      attemptReconnect();
-
-      Serial.println("   [AUTO-RECONNECT] Попытка завершена");
-    }
-
-    lastSensorCheck = currentMillis;
-  }
-
-  // ПРОВерка 3: МОНИТОРИНГ СОСТОЯНИЯ MP3 (каждые 2 минуты) - НОВОЕ
-  if (currentMillis - lastMP3Check > 120000) {
-    if (mp3PlayerReady) {
-      bool isPlaying = isMP3Playing();
-      Serial.printf("[MP3 STATUS] Воспроизведение: %s, Очередь: %d/%d\n",
-                    isPlaying ? "ИДЁТ" : "ОСТАНОВЛЕНО",
-                    uxQueueMessagesWaiting(mp3CommandQueue),
-                    10 - uxQueueSpacesAvailable(mp3CommandQueue));
-    }
-    lastMP3Check = currentMillis;
-  }
-
-  // КОРОТКАЯ ПАУЗА ДЛЯ ДРУГИХ ЗАДАЧ FREERTOS
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

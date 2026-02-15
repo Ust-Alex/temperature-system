@@ -1,8 +1,9 @@
-/** * ФАЙЛ: rtos_tasks.cpp
+/**
+ * ============================================================================
+ * ФАЙЛ: rtos_tasks.cpp
  * ОСНОВНОЙ ФАЙЛ ЗАДАЧ FREERTOS ДЛЯ СИСТЕМЫ МОНИТОРИНГА ТЕМПЕРАТУР
  * 
- * ВЕРСИЯ: 4.0 (С ИНТЕГРАЦИЕЙ ЭНКОДЕРА)
- * ДАТА: [Текущая дата]
+ * ВЕРСИЯ: 4.2 (ДОБАВЛЕН ВЫЗОВ RESETDISPLAYSTATE ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМОВ)
  * 
  * ОСОБЕННОСТИ:
  * 1. Четыре задачи FreeRTOS: энкодер, измерения, дисплей, serial
@@ -16,28 +17,25 @@
 #include "rtos_tasks.h"
 #include "measurement_task.h"
 #include "sensors.h"
-#include "encoder_engine.h"  // Модуль для работы с энкодером (новая библиотека)
+#include "encoder_engine.h"  // Модуль для работы с энкодером
 #include "calibration_simple.h"
+#include "display_engine.h"   // ДОБАВЛЕНО для resetDisplayState
 
 extern float calibrationOffsets[4];    // Массив offset'ов
-extern int referenceSensor;           // Индекс эталонного датчика  
-extern bool calibrationEnabled;       // Флаг включения калибровки
+extern int referenceSensor;            // Индекс эталонного датчика  
+extern bool calibrationEnabled;        // Флаг включения калибровки
 
 // ============================================================================
 // КОНФИГУРАЦИОННЫЕ КОНСТАНТЫ (МАКРОСЫ)
 // ============================================================================
-// #define HEARTBEAT_INTERVAL 30000     // Интервал heartbeat-сообщений: 30 секунд
 #define HEARTBEAT_INTERVAL 30000      // Интервал heartbeat-сообщений: 30 секунд
-#define STACK_CHECK_INTERVAL 300000  // Проверка свободного стека: каждые 5 минут
-#define ENCODER_POLL_INTERVAL 10     // Частота опроса энкодера: 10 мс (100 Гц)
-#define INACTIVITY_TIMEOUT 30000     // Таймаут неактивности: 30 секунд
+#define STACK_CHECK_INTERVAL 300000   // Проверка свободного стека: каждые 5 минут
+#define ENCODER_POLL_INTERVAL 10      // Частота опроса энкодера: 10 мс (100 Гц)
+#define INACTIVITY_TIMEOUT 30000      // Таймаут неактивности: 30 секунд
 
 // ============================================================================
 // ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ДИСПЛЕЯ (ВИДНЫ ТОЛЬКО В ЭТОМ ФАЙЛЕ)
 // ============================================================================
-
-// Примечание: 'systemState' теперь ГЛОБАЛЬНАЯ переменная (объявлена в temperature_system.ino)
-// и используется для управления состоянием интерфейса (0 = главный экран, 1 = выбор режима)
 
 static uint8_t selectedModeIndex = 0;  // Индекс выбранного режима в меню:
                                        // 0 = MODE1 (стабилизация), 1 = MODE2 (рабочий)
@@ -45,27 +43,21 @@ static uint32_t lastUserActivity = 0;  // Время последней акти
                                        // (используется для таймаута возврата в главный экран)
 
 // ============================================================================
-// ЗАДАЧА ЭНКОДЕРА (НОВАЯ ЗАДАЧА, ДОБАВЛЕНА ДЛЯ УПРАВЛЕНИЯ ЧЕРЕЗ ЭНКОДЕР)
+// ЗАДАЧА ЭНКОДЕРА
 // ============================================================================
 void taskEncoder(void* pv) {
-  TickType_t lastWakeTime = xTaskGetTickCount();  // Для точного временного цикла
+  TickType_t lastWakeTime = xTaskGetTickCount();
 
   Serial.println("🎛️  Задача энкодера запущена");
 
-  while (1) {  // Бесконечный цикл - требование FreeRTOS для задач
-    // 1. ОПРОС ЭНКОДЕРА
-    // Функция encoder_tick() опрашивает аппаратный энкодер и возвращает событие
+  while (1) {
     EncoderEvent_t event = encoder_tick();
 
-    // 2. ОТПРАВКА СОБЫТИЯ В ОЧЕРЕДЬ (ЕСЛИ ЕСТЬ)
     if (event != EVENT_NONE && eventQueue != NULL) {
-      // Неблокирующая отправка (0 тиков ожидания)
-      // Если очередь полна - событие теряется (лучше потерять событие, чем заблокировать задачу)
       if (xQueueSend(eventQueue, &event, 0) != pdTRUE) {
         static uint32_t lastQueueError = 0;
         uint32_t now = pdTICKS_TO_MS(xTaskGetTickCount());
 
-        // Логируем ошибку переполнения очереди не чаще чем раз в 5 секунд
         if (now - lastQueueError > 5000) {
           Serial.println("⚠️  [ENCODER] Очередь событий переполнена");
           lastQueueError = now;
@@ -73,8 +65,6 @@ void taskEncoder(void* pv) {
       }
     }
 
-    // 3. ТОЧНЫЙ ИНТЕРВАЛ ОПРОСА
-    // Используем vTaskDelayUntil для гарантированного интервала 10 мс (100 Гц)
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(ENCODER_POLL_INTERVAL));
   }
 }
@@ -92,18 +82,16 @@ void taskSerial(void* pv) {
   while (1) {
     uint32_t currentMillis = pdTICKS_TO_MS(xTaskGetTickCount());
 
-    // HEARTBEAT ДЛЯ ОТЛАДКИ
     if (currentMillis - lastHeartbeat > HEARTBEAT_INTERVAL) {
       // Serial.printf("[SERIAL] Heartbeat: %lu ms, команд: %lu\n",
       //               currentMillis, commandCount);
       lastHeartbeat = currentMillis;
     }
 
-    // ОБРАБОТКА ВХОДЯЩИХ КОМАНД
     if (Serial.available()) {
       String command = Serial.readStringUntil('\n');
       command.trim();
-      command.toUpperCase();  // Для единообразия
+      command.toUpperCase();
       commandCount++;
 
       Serial.printf("> %s\n", command.c_str());
@@ -166,7 +154,6 @@ void taskSerial(void* pv) {
             float temp = sysData.temps[i];
             float delta = sysData.deltas[i];
             
-            // Проверяем специальные значения
             if (temp == TEMP_NO_DATA) {
               Serial.print("⚠️  Нет данных");
             } else if (temp == TEMP_SENSOR_LOST) {
@@ -196,8 +183,8 @@ void taskSerial(void* pv) {
 
       else if (command == "FIND") {
         Serial.println("🔍 Принудительный поиск датчиков...");
-        findSensors();
-        attemptReconnect();
+        sensors_scan_all();
+        forceDisplayRedraw = true;
       }
 
       else if (command == "REBOOT") {
@@ -207,32 +194,16 @@ void taskSerial(void* pv) {
       }
 
       // --------------------------------------------
-      // КОМАНДЫ РЕЖИМОВ РАБОТЫ
+      // КОМАНДЫ РЕЖИМОВ РАБОТЫ - ИСПРАВЛЕНО
       // --------------------------------------------
       else if (command == "MODE1") {
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-          sysData.mode = 0;  // Режим стабилизации
-          sysData.needsRedraw = true;
-          xSemaphoreGive(dataMutex);
-          Serial.println("🔵 Режим установлен: MODE1 (СТАБИЛИЗАЦИЯ)");
-          forceDisplayRedraw = true;
-        }
+        resetDisplayState(0);  // Вызываем полный сброс с новым режимом
+        Serial.println("🔵 Режим установлен: MODE1 (СТАБИЛИЗАЦИЯ)");
       }
 
       else if (command == "MODE2") {
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-          sysData.mode = 1;  // Рабочий режим
-          sysData.needsRedraw = true;
-          xSemaphoreGive(dataMutex);
-          Serial.println("🟢 Режим установлен: MODE2 (РАБОЧИЙ)");
-          
-          // Сохраняем текущую температуру гильзы как базовую
-          if (sensors[3].found) {
-            guildBaseTemp = sysData.temps[3];
-            Serial.printf("   Базовая температура гильзы: %.2f°C\n", guildBaseTemp);
-          }
-          forceDisplayRedraw = true;
-        }
+        resetDisplayState(1);  // Вызываем полный сброс с новым режимом
+        Serial.println("🟢 Режим установлен: MODE2 (РАБОЧИЙ)");
       }
 
       // --------------------------------------------
@@ -272,9 +243,7 @@ void taskSerial(void* pv) {
       }
 
       else if (command.startsWith("CALIB SET ")) {
-        // Формат: CALIB SET [idx] [offset]
-        // Пример: CALIB SET 3 -0.5
-        int firstSpace = 9; // После "CALIB SET "
+        int firstSpace = 9;
         int secondSpace = command.indexOf(' ', firstSpace + 1);
         
         if (secondSpace > 0) {
@@ -296,142 +265,62 @@ void taskSerial(void* pv) {
       // КОМАНДЫ ДИАГНОСТИКИ
       // --------------------------------------------
       else if (command == "DEBUG ON") {
-        // Включить отладочный вывод
-        // Здесь можно добавить глобальный флаг debugMode
-        Serial.println("🐛 Отладочный вывод ВКЛЮЧЕН");
+        Serial.println("🐛 Отладочный вывод ВКЛЮЧЁН");
       }
 
       else if (command == "DEBUG OFF") {
-        // Выключить отладочный вывод
         Serial.println("🐛 Отладочный вывод ВЫКЛЮЧЕН");
       }
 
-      // --------------------------------------------
-      // НЕИЗВЕСТНАЯ КОМАНДА
-      // --------------------------------------------
       else {
-        Serial.printf("❌ Неизвестная команда: %s\n", command.c_str());
-        Serial.println("   Введите HELP для списка команд");
+        Serial.println("❌ Неизвестная команда. Введите HELP для списка.");
       }
     }
 
-    // ЗАДЕРЖКА ДЛЯ ОСВОБОЖДЕНИЯ ЦП
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
 // ============================================================================
-// СОЗДАНИЕ ЗАДАЧ FREERTOS (ОБНОВЛЕНА ДЛЯ СОЗДАНИЯ ЗАДАЧИ ЭНКОДЕРА)
+// ФУНКЦИИ УПРАВЛЕНИЯ FREERTOS
 // ============================================================================
-void create_rtos_tasks() {
-  Serial.println("\n" + String(50, '='));
-  Serial.println("СОЗДАНИЕ ЗАДАЧ FREERTOS (ВЕРСИЯ 4.0 С ЭНКОДЕРОМ)");
-  Serial.println(String(50, '='));
 
-  // 1. ЗАДАЧА ЭНКОДЕРА (НОВАЯ ЗАДАЧА, ВЫСОКИЙ ПРИОРИТЕТ ДЛЯ БЫСТРОГО ОТКЛИКА)
-  if (xTaskCreatePinnedToCore(
-        taskEncoder,    // Функция задачи
-        "EncoderTask",  // Имя задачи (для отладки)
-        4096,           // Размер стека: 4KB (достаточно для простой задачи)
-        NULL,           // Параметры (не используются)
-        4,              // Приоритет: 4 (высокий) - важен быстрый отклик на действия
-        NULL,           // Дескриптор задачи (не сохраняем)
-        1)              // Ядро процессора: 1 (как и все задачи для согласованности)
-      != pdPASS) {
-    Serial.println("❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать задачу энкодера!");
-    tft.fillScreen(COLOR_RED);
-    tft.setCursor(20, 100);
-    tft.print("ОШИБКА: EncoderTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000));  // Аварийная остановка
+void initFreeRTOSObjects() {
+  Serial.println("[RTOS] Создание объектов FreeRTOS...");
+  
+  dataQueue = xQueueCreate(5, sizeof(SystemData_t));
+  if (dataQueue == NULL) {
+    Serial.println("❌ Ошибка создания очереди данных!");
+  } else {
+    Serial.println("   ✅ Очередь данных создана");
   }
-  Serial.println("✅ Задача энкодера создана (приоритет 4, ядро 1, стек 4KB)");
-
-  // 2. ЗАДАЧА ИЗМЕРЕНИЙ (ВЫСОКИЙ ПРИОРИТЕТ - ДОЛЖНА РАБОТАТЬ ТОЧНО ПО ВРЕМЕНИ)
-  if (xTaskCreatePinnedToCore(
-        taskMeasure,
-        "MeasureTask",
-        8192,  // 8KB стека (больше из-за сложных вычислений и буферов)
-        NULL,
-        3,  // Приоритет 3 (высокий, но ниже энкодера)
-        NULL,
-        1)
-      != pdPASS) {
-    Serial.println("❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать задачу измерений!");
-    tft.fillScreen(COLOR_RED);
-    tft.setCursor(20, 120);
-    tft.print("ОШИБКА: MeasureTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+  
+  dataMutex = xSemaphoreCreateMutex();
+  if (dataMutex == NULL) {
+    Serial.println("❌ Ошибка создания мьютекса!");
+  } else {
+    Serial.println("   ✅ Мьютекс создан");
   }
-  Serial.println("✅ Задача измерений создана (приоритет 3, ядро 1, стек 8KB)");
-
-  // 3. ЗАДАЧА ДИСПЛЕЯ (СРЕДНИЙ ПРИОРИТЕТ)
-  if (xTaskCreatePinnedToCore(
-        taskDisplay,
-        "DisplayTask",
-        12288,  // 12KB стека (много из-за буферов дисплея и графических операций)
-        NULL,
-        2,  // Приоритет 2 (средний)
-        NULL,
-        1)
-      != pdPASS) {
-    Serial.println("❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать задачу дисплея!");
-    tft.fillScreen(COLOR_RED);
-    tft.setCursor(20, 140);
-    tft.print("ОШИБКА: DisplayTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+  
+  eventQueue = xQueueCreate(10, sizeof(uint8_t));
+  if (eventQueue == NULL) {
+    Serial.println("❌ Ошибка создания очереди событий!");
+  } else {
+    Serial.println("   ✅ Очередь событий создана (10 событий)");
   }
-  Serial.println("✅ Задача дисплея создана (приоритет 2, ядро 1, стек 12KB)");
-
-  // 4. ЗАДАЧА SERIAL (НИЗКИЙ ПРИОРИТЕТ - КОМАНДЫ ПОЛЬЗОВАТЕЛЯ НЕ КРИТИЧНЫ ПО ВРЕМЕНИ)
-  if (xTaskCreatePinnedToCore(
-        taskSerial,
-        "SerialTask",
-        4096,  // 4KB стека
-        NULL,
-        1,  // Приоритет 1 (низкий)
-        NULL,
-        1)
-      != pdPASS) {
-    Serial.println("❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось создать задачу Serial!");
-    tft.fillScreen(COLOR_RED);
-    tft.setCursor(20, 160);
-    tft.print("ОШИБКА: SerialTask");
-    while (1) vTaskDelay(pdMS_TO_TICKS(1000));
-  }
-  Serial.println("✅ Задача Serial создана (приоритет 1, ядро 1, стек 4KB)");
-
-  // 5. ИНФОРМАЦИЯ О СИСТЕМЕ И ЗАВЕРШЕНИЕ ИНИЦИАЛИЗАЦИИ
-  Serial.println("\n" + String(60, '='));
-  Serial.println("✅ СИСТЕМА УСПЕШНО ЗАПУЩЕНА");
-  Serial.println(String(60, '='));
-  Serial.println("ОСОБЕННОСТИ ЭТОЙ ВЕРСИИ:");
-  Serial.println("  1. Heartbeat во всех задачах для отладки зависаний");
-  Serial.println("  2. Проверка свободного стека каждые 5 минут");
-  Serial.println("  3. Мьютекс dataMutex используется КОНСИСТЕНТНО");
-  Serial.println("  4. Оптимизировано время удержания мьютекса");
-  Serial.println("  5. Неблокирующая отправка в очередь (старые данные теряются)");
-  Serial.println("  6. Отдельное обновление цветового состояния");
-  Serial.println("  7. НОВАЯ ЗАДАЧА: Управление через энкодер с очередью событий");
-  Serial.println("  8. НОВАЯ ФУНКЦИЯ: Машина состояний интерфейса (STATE_MAIN/MODE)");
-  Serial.println("  9. НОВАЯ ФУНКЦИЯ: Авто-возврат в главный экран по таймауту");
-  Serial.println(String(60, '='));
-
-  // 6. ПРОВЕРКА СТЕКА ОСНОВНОЙ ЗАДАЧИ (ДОПОЛНИТЕЛЬНАЯ ДИАГНОСТИКА)
-  vTaskDelay(pdMS_TO_TICKS(2000));  // Ждем 2 секунды для стабилизации системы
-  UBaseType_t mainStack = uxTaskGetStackHighWaterMark(NULL);
-  Serial.printf("[INIT] Стек основной задачи: %u слов (%u байт)\n",
-                mainStack, mainStack * 4);
-
-  if (mainStack < 200) {
-    Serial.println("⚠️  ВНИМАНИЕ: Мало стека в основной задаче!");
-  }
-
-  Serial.println("\n🔥 Система готова к работе!");
-  Serial.println("🎛️  Используйте энкодер для навигации");
-  Serial.println("📋 Введите HELP для списка команд");
-  Serial.println(String(60, '=') + "\n");
 }
 
 // ============================================================================
-// КОНЕЦ ФАЙЛА rtos_tasks.cpp
+// ФУНКЦИЯ СОЗДАНИЯ ВСЕХ ЗАДАЧ
 // ============================================================================
+
+void create_rtos_tasks() {
+  Serial.println("\n[RTOS] Создание задач...");
+  
+  xTaskCreate(taskEncoder, "Encoder", 2048, NULL, 4, NULL);
+  xTaskCreate(taskMeasure, "Measure", 4096, NULL, 3, NULL);
+  xTaskCreate(taskDisplay, "Display", 4096, NULL, 2, NULL);
+  xTaskCreate(taskSerial, "Serial", 3072, NULL, 1, NULL);
+  
+  Serial.println("[RTOS] Все задачи созданы");
+}

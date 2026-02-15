@@ -1,18 +1,16 @@
-/** * ФАЙЛ: display_engine.cpp
+/**
+ * ============================================================================
+ * ФАЙЛ: display_engine.cpp
  * ДВИЖОК ОТОБРАЖЕНИЯ - УПРАВЛЕНИЕ TFT ДИСПЛЕЕМ
  * 
- * ВЕРСИЯ: 6.1 (ОПТИМИЗИРОВАННАЯ, НА ОСНОВЕ СТАРОЙ ЛОГИКИ)
+ * ВЕРСИЯ: 6.2 (ДОБАВЛЕН ЗВУК ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМОВ)
  * 
  * ОТВЕТСТВЕННОСТЬ:
  * 1. Получение данных из очереди
  * 2. Кэширование значений (перерисовка только изменившегося)
  * 3. Быстрая смена фона без полной перерисовки
  * 4. Вызов функций отрисовки из модуля display_modes
- * 
- * ОПТИМИЗАЦИИ:
- * - Убраны vTaskDelay из отрисовки
- * - При смене цвета вызывается только fillScreen, без сброса кэша
- * - Кэширование lastDisplayTemps/lastDisplayDeltas (как в старом коде)
+ * 5. Звуковое сопровождение при смене режимов (0003.mp3)
  * ============================================================================
  */
 
@@ -23,7 +21,7 @@
 #include "system_config.h"
 #include "sensors.h"
 #include "mode2_timer.h"
-
+#include "mp3_player.h"  // ДОБАВЛЕНО для звука
 
 // Внешние объекты
 extern TFT_eSPI tft;
@@ -31,7 +29,7 @@ extern SemaphoreHandle_t dataMutex;
 extern QueueHandle_t dataQueue;
 
 // ============================================================================
-// ОПРЕДЕЛЕНИЕ ЦВЕТА ФОНА (БЕЗ ИЗМЕНЕНИЙ)
+// ОПРЕДЕЛЕНИЕ ЦВЕТА ФОНА
 // ============================================================================
 uint16_t getCurrentBackgroundColor() {
   if (sysData.mode == 0) return COLOR_BLUE;
@@ -44,7 +42,7 @@ uint16_t getCurrentBackgroundColor() {
 }
 
 // ============================================================================
-// ПОЛНАЯ ПЕРЕРИСОВКА (ТОЛЬКО ПО РЕАЛЬНОЙ НЕОБХОДИМОСТИ)
+// ПОЛНАЯ ПЕРЕРИСОВКА
 // ============================================================================
 void performFullDisplayRedraw() {
   uint16_t bgColor = getCurrentBackgroundColor();
@@ -62,7 +60,7 @@ void performFullDisplayRedraw() {
   forceDisplayRedraw = false;
   displayInitialized = true;
 
-  Serial.printf("[DISPLAY] Полная перерисовка, режим: %d, цвет: %04X\n", 
+  Serial.printf("[DISPLAY] Полная перерисовка, режим: %d, цвет: %04X\n",
                 sysData.mode, bgColor);
 }
 
@@ -240,6 +238,26 @@ void resetDisplayState(uint8_t newMode) {
   }
 
   forceDisplayRedraw = true;
+
+  // ========================================================================
+  // ЗВУК ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМОВ (ДОБАВЛЕНО)
+  // ========================================================================
+  // Mp3Command_t modeSound = { MP3_CMD_PLAY_TRACK, 3 };  // 0003.mp3 - звук смены режима
+  // sendMP3Command(modeSound);
+  // Serial.printf("[MP3 DEBUG] Команда отправлена: трек %d, плеер готов: %d\n",
+  //               3, mp3PlayerReady);
+
+  Mp3Command_t modeSound = { MP3_CMD_PLAY_TRACK, 3 };
+  Serial.printf("[MP3 DEBUG] Пытаюсь отправить трек %d, плеер готов: %d, очередь: %p\n",
+                3, mp3PlayerReady, mp3CommandQueue);
+
+  if (sendMP3Command(modeSound)) {
+    Serial.println("[MP3 DEBUG] ✅ Команда отправлена");
+  } else {
+    Serial.println("[MP3 DEBUG] ❌ Ошибка отправки");
+  }
+
+
 
   // Специфичная для режима логика
   if (newMode == 0) {
