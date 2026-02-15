@@ -2,15 +2,16 @@
  * ============================================================================
  * ФАЙЛ: display_engine.cpp
  * ДВИЖОК ОТОБРАЖЕНИЯ - УПРАВЛЕНИЕ TFT ДИСПЛЕЕМ
- * 
- * ВЕРСИЯ: 6.2 (ДОБАВЛЕН ЗВУК ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМОВ)
- * 
+ *
+ * ВЕРСИЯ: 6.3 (ИНТЕГРАЦИЯ С МЕНЮ)
+ *
  * ОТВЕТСТВЕННОСТЬ:
  * 1. Получение данных из очереди
  * 2. Кэширование значений (перерисовка только изменившегося)
  * 3. Быстрая смена фона без полной перерисовки
  * 4. Вызов функций отрисовки из модуля display_modes
  * 5. Звуковое сопровождение при смене режимов (0003.mp3)
+ * 6. Отключение отрисовки главного экрана при активном меню
  * ============================================================================
  */
 
@@ -21,12 +22,14 @@
 #include "system_config.h"
 #include "sensors.h"
 #include "mode2_timer.h"
-#include "mp3_player.h"  // ДОБАВЛЕНО для звука
+#include "mp3_player.h"
+#include "menu_engine.h"  // Для проверки активности меню
 
 // Внешние объекты
 extern TFT_eSPI tft;
 extern SemaphoreHandle_t dataMutex;
 extern QueueHandle_t dataQueue;
+extern QueueHandle_t eventQueue; // Очередь событий энкодера
 
 // ============================================================================
 // ОПРЕДЕЛЕНИЕ ЦВЕТА ФОНА
@@ -68,11 +71,32 @@ void performFullDisplayRedraw() {
 // ЗАДАЧА ДИСПЛЕЯ (ОСНОВНОЙ ЦИКЛ)
 // ============================================================================
 void taskDisplay(void* pvParameters) {
-  Serial.println("🖥️  Задача дисплея запущена (оптимизированная версия)");
+  Serial.println("🖥️  Задача дисплея запущена (с поддержкой меню)");
 
   while (1) {
     // ========================================================================
-    // 1. ПОЛУЧЕНИЕ ДАННЫХ ИЗ ОЧЕРЕДИ
+    // 1. ОБРАБОТКА СОБЫТИЙ ЭНКОДЕРА (ВСЕГДА)
+    // ========================================================================
+    uint8_t encEvent;
+    if (eventQueue != NULL && xQueueReceive(eventQueue, &encEvent, 0) == pdTRUE) {
+      menu_handle_event((EncoderEvent_t)encEvent);
+    }
+
+    // ========================================================================
+    // 2. ПРОВЕРКА ТАЙМАУТА МЕНЮ
+    // ========================================================================
+    menu_check_timeout();
+
+    // ========================================================================
+    // 3. ЕСЛИ АКТИВНО МЕНЮ - НЕ РИСУЕМ ГЛАВНЫЙ ЭКРАН
+    // ========================================================================
+    if (menu_is_active()) {
+      vTaskDelay(pdMS_TO_TICKS(DISPLAY_UPDATE_MS));
+      continue;
+    }
+
+    // ========================================================================
+    // 4. ПОЛУЧЕНИЕ ДАННЫХ ИЗ ОЧЕРЕДИ (ТОЛЬКО ДЛЯ ГЛАВНОГО ЭКРАНА)
     // ========================================================================
     SystemData_t receivedData;
     if (dataQueue != NULL && xQueueReceive(dataQueue, &receivedData, 0) == pdTRUE) {
@@ -83,7 +107,7 @@ void taskDisplay(void* pvParameters) {
     }
 
     // ========================================================================
-    // 2. ОБРАБОТКА РЕЖИМА MODE1 (СТАБИЛИЗАЦИЯ)
+    // 5. ОБРАБОТКА РЕЖИМА MODE1 (СТАБИЛИЗАЦИЯ)
     // ========================================================================
     if (sysData.mode == 0) {
       const uint16_t BG_COLOR = COLOR_BLUE;
@@ -132,37 +156,31 @@ void taskDisplay(void* pvParameters) {
 
         if (!display_is_valid_temperature(temp)) continue;
 
-        // Проверка кэша (порог 0.1°C для температуры, 0.01°C для дельты)
         bool needRedraw = false;
         if (fabs(temp - lastDisplayTemps[i]) >= 0.1f) needRedraw = true;
         else if (fabs(delta - lastDisplayDeltas[i]) >= 0.01f) needRedraw = true;
 
         if (!needRedraw) continue;
 
-        // Отрисовка через модуль display_modes
         display_mode1_draw_sensor(i, y, temp, delta);
-
-        // Сохранение в кэш
         lastDisplayTemps[i] = temp;
         lastDisplayDeltas[i] = delta;
       }
     }
 
     // ========================================================================
-    // 3. ОБРАБОТКА РЕЖИМА MODE2 (РАБОЧИЙ)
+    // 6. ОБРАБОТКА РЕЖИМА MODE2 (РАБОЧИЙ)
     // ========================================================================
     else {
       uint16_t bgColor = getCurrentBackgroundColor();
       uint16_t textColor = (bgColor == COLOR_RED) ? COLOR_WHITE : COLOR_BLACK;
 
-      // Смена цвета фона (без полной перерисовки)
       if (forceDisplayRedraw || !displayInitialized || bgColor != lastGlobalBgColor) {
         if (forceDisplayRedraw) {
           performFullDisplayRedraw();
         } else {
           tft.fillScreen(bgColor);
           lastGlobalBgColor = bgColor;
-          // Сбрасываем кэш, чтобы всё перерисовалось
           for (int i = 0; i < 4; i++) {
             lastDisplayTemps[i] = -1000.0f;
             lastDisplayDeltas[i] = -1000.0f;
@@ -178,7 +196,6 @@ void taskDisplay(void* pvParameters) {
         }
       }
 
-      // Обновление времени MODE2
       String currentTime = mode2_timer_get_formatted();
       if (currentTime != lastMode2TimeString) {
         tft.fillRect(170, 0, 70, 30, bgColor);
@@ -190,7 +207,6 @@ void taskDisplay(void* pvParameters) {
         lastMode2TimeString = currentTime;
       }
 
-      // Обновление датчиков
       for (int i = 0; i < 4; i++) {
         if (!sensors[i].found) continue;
 
@@ -200,24 +216,20 @@ void taskDisplay(void* pvParameters) {
 
         if (!display_is_valid_temperature(temp)) continue;
 
-        // Более чувствительный порог для MODE2 (0.05°C)
         bool needRedraw = false;
         if (fabs(temp - lastDisplayTemps[i]) >= 0.05f) needRedraw = true;
         else if (fabs(delta - lastDisplayDeltas[i]) >= 0.01f) needRedraw = true;
 
         if (!needRedraw) continue;
 
-        // Отрисовка через модуль display_modes
         display_mode2_draw_sensor(i, y, temp, delta, bgColor, textColor);
-
-        // Сохранение в кэш
         lastDisplayTemps[i] = temp;
         lastDisplayDeltas[i] = delta;
       }
     }
 
     // ========================================================================
-    // 4. ЗАДЕРЖКА ДО СЛЕДУЮЩЕГО ЦИКЛА
+    // 7. ЗАДЕРЖКА ДО СЛЕДУЮЩЕГО ЦИКЛА
     // ========================================================================
     vTaskDelay(pdMS_TO_TICKS(DISPLAY_UPDATE_MS));
   }
@@ -230,7 +242,6 @@ void resetDisplayState(uint8_t newMode) {
   Serial.printf("\n🔄 ПОЛНЫЙ СБРОС ДИСПЛЕЯ\n");
   Serial.printf("   Режим: %d -> %d\n", sysData.mode, newMode);
 
-  // Атомарное обновление режима
   if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
     sysData.mode = newMode;
     sysData.needsRedraw = true;
@@ -239,27 +250,10 @@ void resetDisplayState(uint8_t newMode) {
 
   forceDisplayRedraw = true;
 
-  // ========================================================================
-  // ЗВУК ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМОВ (ДОБАВЛЕНО)
-  // ========================================================================
-  // Mp3Command_t modeSound = { MP3_CMD_PLAY_TRACK, 3 };  // 0003.mp3 - звук смены режима
-  // sendMP3Command(modeSound);
-  // Serial.printf("[MP3 DEBUG] Команда отправлена: трек %d, плеер готов: %d\n",
-  //               3, mp3PlayerReady);
-
+  // Звук при переключении режимов
   Mp3Command_t modeSound = { MP3_CMD_PLAY_TRACK, 3 };
-  Serial.printf("[MP3 DEBUG] Пытаюсь отправить трек %d, плеер готов: %d, очередь: %p\n",
-                3, mp3PlayerReady, mp3CommandQueue);
+  sendMP3Command(modeSound);
 
-  if (sendMP3Command(modeSound)) {
-    Serial.println("[MP3 DEBUG] ✅ Команда отправлена");
-  } else {
-    Serial.println("[MP3 DEBUG] ❌ Ошибка отправки");
-  }
-
-
-
-  // Специфичная для режима логика
   if (newMode == 0) {
     mode2_timer_stop();
     timeRefTemp = 0.0f;
@@ -272,7 +266,6 @@ void resetDisplayState(uint8_t newMode) {
     guildColorState = 0;
     Serial.println("   ✓ Цветовое состояние сброшено в ЗЕЛЁНЫЙ");
 
-    // Сохранение базовой температуры гильзы
     if (sensors[3].found) {
       float currentGuildTemp = sensors[3].temp;
       if (display_is_valid_temperature(currentGuildTemp)) {

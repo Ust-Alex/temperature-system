@@ -19,19 +19,19 @@
 #include "sensors.h"
 #include "encoder_engine.h"  // Модуль для работы с энкодером
 #include "calibration_simple.h"
-#include "display_engine.h"   // ДОБАВЛЕНО для resetDisplayState
+#include "display_engine.h"  // ДОБАВЛЕНО для resetDisplayState
 
-extern float calibrationOffsets[4];    // Массив offset'ов
-extern int referenceSensor;            // Индекс эталонного датчика  
-extern bool calibrationEnabled;        // Флаг включения калибровки
+extern float calibrationOffsets[4];  // Массив offset'ов
+extern int referenceSensor;          // Индекс эталонного датчика
+extern bool calibrationEnabled;      // Флаг включения калибровки
 
 // ============================================================================
 // КОНФИГУРАЦИОННЫЕ КОНСТАНТЫ (МАКРОСЫ)
 // ============================================================================
-#define HEARTBEAT_INTERVAL 30000      // Интервал heartbeat-сообщений: 30 секунд
-#define STACK_CHECK_INTERVAL 300000   // Проверка свободного стека: каждые 5 минут
-#define ENCODER_POLL_INTERVAL 10      // Частота опроса энкодера: 10 мс (100 Гц)
-#define INACTIVITY_TIMEOUT 30000      // Таймаут неактивности: 30 секунд
+#define HEARTBEAT_INTERVAL 30000     // Интервал heartbeat-сообщений: 30 секунд
+#define STACK_CHECK_INTERVAL 300000  // Проверка свободного стека: каждые 5 минут
+#define ENCODER_POLL_INTERVAL 10     // Частота опроса энкодера: 10 мс (100 Гц)
+#define INACTIVITY_TIMEOUT 30000     // Таймаут неактивности: 30 секунд
 
 // ============================================================================
 // ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ ДИСПЛЕЯ (ВИДНЫ ТОЛЬКО В ЭТОМ ФАЙЛЕ)
@@ -52,6 +52,10 @@ void taskEncoder(void* pv) {
 
   while (1) {
     EncoderEvent_t event = encoder_tick();
+
+    if (event != EVENT_NONE) {
+      Serial.printf("[ENCODER] Событие: %d\n", event);
+    }
 
     if (event != EVENT_NONE && eventQueue != NULL) {
       if (xQueueSend(eventQueue, &event, 0) != pdTRUE) {
@@ -103,17 +107,17 @@ void taskSerial(void* pv) {
         Serial.println("\n" + String(60, '='));
         Serial.println("📋 СПИСОК КОМАНД");
         Serial.println(String(60, '='));
-        
+
         Serial.println("\n🔧 СИСТЕМНЫЕ КОМАНДЫ:");
         Serial.println("  HELP     - Этот список команд");
         Serial.println("  STATUS   - Полный статус системы");
         Serial.println("  FIND     - Принудительный поиск датчиков");
         Serial.println("  REBOOT   - Перезагрузка системы");
-        
+
         Serial.println("\n🎛️  РЕЖИМЫ РАБОТЫ:");
         Serial.println("  MODE1    - Режим стабилизации (синий)");
         Serial.println("  MODE2    - Рабочий режим (зелёный/жёлтый/красный)");
-        
+
         Serial.println("\n📊 КАЛИБРОВКА ДАТЧИКОВ:");
         Serial.println("  CALIB SHOW   - Показать коэффициенты калибровки");
         Serial.println("  CALIB AUTO   - Автокалибровка относительно эталона");
@@ -123,11 +127,11 @@ void taskSerial(void* pv) {
         Serial.println("  CALIB REF N  - Сделать датчик N эталоном (0-3)");
         Serial.println("  CALIB SET N X - Установить offset X для датчика N");
         Serial.println("                Пример: CALIB SET 3 -0.5");
-        
+
         Serial.println("\n⚙️  ДИАГНОСТИКА:");
         Serial.println("  DEBUG ON  - Включить отладочный вывод");
         Serial.println("  DEBUG OFF - Выключить отладочный вывод");
-        
+
         Serial.println(String(60, '='));
       }
 
@@ -135,25 +139,25 @@ void taskSerial(void* pv) {
         Serial.println("\n" + String(50, '='));
         Serial.println("          СТАТУС СИСТЕМЫ");
         Serial.println(String(50, '='));
-        
-        Serial.printf("Режим работы: %s\n", 
+
+        Serial.printf("Режим работы: %s\n",
                       sysData.mode == 0 ? "СТАБИЛИЗАЦИЯ (MODE1)" : "РАБОЧИЙ (MODE2)");
-        Serial.printf("Система инициализирована: %s\n", 
+        Serial.printf("Система инициализирована: %s\n",
                       systemInitialized ? "ДА" : "НЕТ");
-        Serial.printf("Критическая ошибка: %s\n", 
+        Serial.printf("Критическая ошибка: %s\n",
                       criticalError ? "ДА" : "НЕТ");
         Serial.printf("Базовая темп. гильзы: %.2f°C\n", guildBaseTemp);
-        Serial.printf("Флаг перерисовки: %s\n", 
+        Serial.printf("Флаг перерисовки: %s\n",
                       forceDisplayRedraw ? "ДА" : "НЕТ");
-        
+
         Serial.println("\n--- СОСТОЯНИЕ ДАТЧИКОВ ---");
         for (int i = 0; i < 4; i++) {
           Serial.printf("  [%d] %s: ", i, sensorNames[i]);
-          
+
           if (sensors[i].found) {
             float temp = sysData.temps[i];
             float delta = sysData.deltas[i];
-            
+
             if (temp == TEMP_NO_DATA) {
               Serial.print("⚠️  Нет данных");
             } else if (temp == TEMP_SENSOR_LOST) {
@@ -168,15 +172,15 @@ void taskSerial(void* pv) {
           }
           Serial.println();
         }
-        
+
         Serial.println("\n--- ЗАДАЧИ FREERTOS ---");
-        Serial.printf("  Очередь данных: %s\n", 
+        Serial.printf("  Очередь данных: %s\n",
                       dataQueue ? "Создана" : "Отсутствует");
         if (dataQueue) {
-          Serial.printf("  Свободное место в очереди: %d\n", 
+          Serial.printf("  Свободное место в очереди: %d\n",
                         uxQueueSpacesAvailable(dataQueue));
         }
-        Serial.printf("  Мьютекс данных: %s\n", 
+        Serial.printf("  Мьютекс данных: %s\n",
                       dataMutex ? "Создан" : "Отсутствует");
         Serial.println(String(50, '='));
       }
@@ -245,11 +249,11 @@ void taskSerial(void* pv) {
       else if (command.startsWith("CALIB SET ")) {
         int firstSpace = 9;
         int secondSpace = command.indexOf(' ', firstSpace + 1);
-        
+
         if (secondSpace > 0) {
           int idx = command.substring(firstSpace, secondSpace).toInt();
           float offset = command.substring(secondSpace + 1).toFloat();
-          
+
           if (idx >= 0 && idx < 4) {
             setManualOffset(idx, offset);
           } else {
@@ -287,21 +291,21 @@ void taskSerial(void* pv) {
 
 void initFreeRTOSObjects() {
   Serial.println("[RTOS] Создание объектов FreeRTOS...");
-  
+
   dataQueue = xQueueCreate(5, sizeof(SystemData_t));
   if (dataQueue == NULL) {
     Serial.println("❌ Ошибка создания очереди данных!");
   } else {
     Serial.println("   ✅ Очередь данных создана");
   }
-  
+
   dataMutex = xSemaphoreCreateMutex();
   if (dataMutex == NULL) {
     Serial.println("❌ Ошибка создания мьютекса!");
   } else {
     Serial.println("   ✅ Мьютекс создан");
   }
-  
+
   eventQueue = xQueueCreate(10, sizeof(uint8_t));
   if (eventQueue == NULL) {
     Serial.println("❌ Ошибка создания очереди событий!");
@@ -316,11 +320,11 @@ void initFreeRTOSObjects() {
 
 void create_rtos_tasks() {
   Serial.println("\n[RTOS] Создание задач...");
-  
+
   xTaskCreate(taskEncoder, "Encoder", 2048, NULL, 4, NULL);
   xTaskCreate(taskMeasure, "Measure", 4096, NULL, 3, NULL);
   xTaskCreate(taskDisplay, "Display", 4096, NULL, 2, NULL);
   xTaskCreate(taskSerial, "Serial", 3072, NULL, 1, NULL);
-  
+
   Serial.println("[RTOS] Все задачи созданы");
 }

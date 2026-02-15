@@ -14,13 +14,14 @@
 #include "mp3_player.h"
 #include "mode2_timer.h"
 #include "sensors.h"
+#include "menu_engine.h"
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
 
   settings_init();
-  
+
   Serial.println("\n" + String(70, '='));
   Serial.println("🚀 СИСТЕМА КОНТРОЛЯ ТЕМПЕРАТУРЫ v5.2");
   Serial.println(String(70, '='));
@@ -56,6 +57,8 @@ void setup() {
   Serial.println("\n[INIT] Создание задач...");
   create_rtos_tasks();
 
+  menu_init();
+
   // Запуск задачи MP3
   if (mp3PlayerReady && mp3CommandQueue != NULL) {
     xTaskCreate(taskMP3, "MP3 Player", 4096, NULL, 1, NULL);
@@ -64,7 +67,7 @@ void setup() {
     vTaskDelay(pdMS_TO_TICKS(500));
 
     // ТОЛЬКО СТАРТОВЫЙ ТРЕК
-    Mp3Command_t startSound = {MP3_CMD_PLAY_TRACK, 1};
+    Mp3Command_t startSound = { MP3_CMD_PLAY_TRACK, 1 };
     sendMP3Command(startSound);
     Serial.println("🎵 Стартовый трек #1 отправлен");
   }
