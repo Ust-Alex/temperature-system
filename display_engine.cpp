@@ -1,16 +1,18 @@
 /** * ФАЙЛ: display_engine.cpp
  * ДВИЖОК ОТОБРАЖЕНИЯ - УПРАВЛЕНИЕ TFT ДИСПЛЕЕМ
  * 
- * ВЕРСИЯ: 6.0 (С МОДУЛЬНОЙ АРХИТЕКТУРОЙ)
+ * ВЕРСИЯ: 6.1 (ОПТИМИЗИРОВАННАЯ, НА ОСНОВЕ СТАРОЙ ЛОГИКИ)
  * 
  * ОТВЕТСТВЕННОСТЬ:
  * 1. Получение данных из очереди
- * 2. Кэширование значений для оптимизации перерисовки
- * 3. Вызов функций отрисовки из display_modes
- * 4. Управление полной перерисовкой при смене режима
+ * 2. Кэширование значений (перерисовка только изменившегося)
+ * 3. Быстрая смена фона без полной перерисовки
+ * 4. Вызов функций отрисовки из модуля display_modes
  * 
- * ВАЖНО: Этот файл НЕ СОДЕРЖИТ код отрисовки!
- *        Вся отрисовка в display_modes и display_common
+ * ОПТИМИЗАЦИИ:
+ * - Убраны vTaskDelay из отрисовки
+ * - При смене цвета вызывается только fillScreen, без сброса кэша
+ * - Кэширование lastDisplayTemps/lastDisplayDeltas (как в старом коде)
  * ============================================================================
  */
 
@@ -22,16 +24,6 @@
 #include "sensors.h"
 #include "mode2_timer.h"
 
-// ============================================================================
-// ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ КЭШИРОВАНИЯ
-// ============================================================================
-static float cachedTemps[4] = { -1000.0f, -1000.0f, -1000.0f, -1000.0f };
-static float cachedDeltas[4] = { -1000.0f, -1000.0f, -1000.0f, -1000.0f };
-static String cachedTimeString = "";
-static String cachedMode2TimeString = "";
-static uint8_t cachedDisplayMode = 0xFF;
-static uint16_t cachedBgColor = 0xFFFF;
-static bool displayInitialized = false;
 
 // Внешние объекты
 extern TFT_eSPI tft;
@@ -39,14 +31,10 @@ extern SemaphoreHandle_t dataMutex;
 extern QueueHandle_t dataQueue;
 
 // ============================================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ОПРЕДЕЛЕНИЕ ЦВЕТА ФОНА (БЕЗ ИЗМЕНЕНИЙ)
 // ============================================================================
-
 uint16_t getCurrentBackgroundColor() {
-  if (sysData.mode == 0) {
-    return COLOR_BLUE;
-  }
-  
+  if (sysData.mode == 0) return COLOR_BLUE;
   switch (guildColorState) {
     case 0: return COLOR_GREEN;
     case 1: return COLOR_YELLOW;
@@ -55,41 +43,36 @@ uint16_t getCurrentBackgroundColor() {
   }
 }
 
+// ============================================================================
+// ПОЛНАЯ ПЕРЕРИСОВКА (ТОЛЬКО ПО РЕАЛЬНОЙ НЕОБХОДИМОСТИ)
+// ============================================================================
 void performFullDisplayRedraw() {
   uint16_t bgColor = getCurrentBackgroundColor();
   tft.fillScreen(bgColor);
-  
+  lastGlobalBgColor = bgColor;
+
   // Полный сброс кэша
   for (int i = 0; i < 4; i++) {
-    cachedTemps[i] = -1000.0f;
-    cachedDeltas[i] = -1000.0f;
+    lastDisplayTemps[i] = -1000.0f;
+    lastDisplayDeltas[i] = -1000.0f;
   }
-  cachedTimeString = "";
-  cachedMode2TimeString = "";
-  cachedDisplayMode = sysData.mode;
-  cachedBgColor = bgColor;
-  
+  lastTimeString = "";
+  lastMode2TimeString = "";
+
+  forceDisplayRedraw = false;
+  displayInitialized = true;
+
   Serial.printf("[DISPLAY] Полная перерисовка, режим: %d, цвет: %04X\n", 
                 sysData.mode, bgColor);
 }
 
 // ============================================================================
-// ЗАДАЧА ДИСПЛЕЯ
+// ЗАДАЧА ДИСПЛЕЯ (ОСНОВНОЙ ЦИКЛ)
 // ============================================================================
 void taskDisplay(void* pvParameters) {
-  Serial.println("🖥️  Задача дисплея запущена (модульная архитектура)");
-  
-  uint32_t lastHeartbeat = 0;
-  
+  Serial.println("🖥️  Задача дисплея запущена (оптимизированная версия)");
+
   while (1) {
-    uint32_t currentMillis = millis();
-    
-    // Heartbeat для отладки (раз в 30 секунд)
-    if (currentMillis - lastHeartbeat > 30000) {
-      // Serial.printf("[DISPLAY] Heartbeat\n");
-      lastHeartbeat = currentMillis;
-    }
-    
     // ========================================================================
     // 1. ПОЛУЧЕНИЕ ДАННЫХ ИЗ ОЧЕРЕДИ
     // ========================================================================
@@ -100,34 +83,27 @@ void taskDisplay(void* pvParameters) {
         xSemaphoreGive(dataMutex);
       }
     }
-    
+
     // ========================================================================
-    // 2. ПРОВЕРКА НЕОБХОДИМОСТИ ПОЛНОЙ ПЕРЕРИСОВКИ
-    // ========================================================================
-    bool needFullRedraw = forceDisplayRedraw || !displayInitialized;
-    
-    if (sysData.mode != cachedDisplayMode) {
-      needFullRedraw = true;
-    } else if (sysData.mode == 1 && cachedBgColor != getCurrentBackgroundColor()) {
-      needFullRedraw = true;
-    }
-    
-    if (needFullRedraw) {
-      performFullDisplayRedraw();
-      forceDisplayRedraw = false;
-      displayInitialized = true;
-    }
-    
-    // ========================================================================
-    // 3. ОБНОВЛЕНИЕ ЭКРАНА В ЗАВИСИМОСТИ ОТ РЕЖИМА
+    // 2. ОБРАБОТКА РЕЖИМА MODE1 (СТАБИЛИЗАЦИЯ)
     // ========================================================================
     if (sysData.mode == 0) {
-      // ======================================================================
-      // РЕЖИМ MODE1 (СТАБИЛИЗАЦИЯ)
-      // ======================================================================
-      
+      const uint16_t BG_COLOR = COLOR_BLUE;
+      const uint16_t TEXT_COLOR = COLOR_WHITE;
+
+      // Первый запуск или принудительная перерисовка
+      if (forceDisplayRedraw || !displayInitialized) {
+        if (forceDisplayRedraw) {
+          performFullDisplayRedraw();
+        } else {
+          tft.fillScreen(BG_COLOR);
+          displayInitialized = true;
+        }
+        lastGlobalBgColor = BG_COLOR;
+      }
+
       // Обновление времени
-      String currentTime = "";
+      String currentTime = "00:00";
       if (timeIsCounting) {
         uint32_t elapsed = millis() - timeStartMs;
         uint32_t minutes = elapsed / 60000UL;
@@ -136,80 +112,112 @@ void taskDisplay(void* pvParameters) {
         char buf[6];
         snprintf(buf, sizeof(buf), "%02d:%02d", hours, mins);
         currentTime = String(buf);
-      } else {
-        currentTime = "00:00";
       }
-      
-      if (currentTime != cachedTimeString) {
-        display_mode1_draw_time();
-        cachedTimeString = currentTime;
+
+      if (currentTime != lastTimeString) {
+        tft.fillRect(170, 0, 70, 30, BG_COLOR);
+        tft.setTextFont(FONT_DELTA);
+        tft.setTextColor(TEXT_COLOR, BG_COLOR);
+        tft.setCursor(170, 5);
+        tft.print(currentTime);
+        tft.setTextFont(FONT_BIG);
+        lastTimeString = currentTime;
       }
-      
+
       // Обновление датчиков
       for (int i = 0; i < 4; i++) {
         if (!sensors[i].found) continue;
-        
+
         float temp = sysData.temps[i];
         float delta = sysData.deltas[i];
         int y = displayYPositions[i];
-        
+
         if (!display_is_valid_temperature(temp)) continue;
-        
-        // Проверка кэша
+
+        // Проверка кэша (порог 0.1°C для температуры, 0.01°C для дельты)
         bool needRedraw = false;
-        if (fabs(temp - cachedTemps[i]) >= 0.1f) needRedraw = true;
-        else if (fabs(delta - cachedDeltas[i]) >= 0.01f) needRedraw = true;
-        
-        if (needRedraw) {
-          display_mode1_draw_sensor(i, y, temp, delta);
-          cachedTemps[i] = temp;
-          cachedDeltas[i] = delta;
-        }
+        if (fabs(temp - lastDisplayTemps[i]) >= 0.1f) needRedraw = true;
+        else if (fabs(delta - lastDisplayDeltas[i]) >= 0.01f) needRedraw = true;
+
+        if (!needRedraw) continue;
+
+        // Отрисовка через модуль display_modes
+        display_mode1_draw_sensor(i, y, temp, delta);
+
+        // Сохранение в кэш
+        lastDisplayTemps[i] = temp;
+        lastDisplayDeltas[i] = delta;
       }
-      
-    } else {
-      // ======================================================================
-      // РЕЖИМ MODE2 (РАБОЧИЙ)
-      // ======================================================================
-      
+    }
+
+    // ========================================================================
+    // 3. ОБРАБОТКА РЕЖИМА MODE2 (РАБОЧИЙ)
+    // ========================================================================
+    else {
       uint16_t bgColor = getCurrentBackgroundColor();
       uint16_t textColor = (bgColor == COLOR_RED) ? COLOR_WHITE : COLOR_BLACK;
-      
+
+      // Смена цвета фона (без полной перерисовки)
+      if (forceDisplayRedraw || !displayInitialized || bgColor != lastGlobalBgColor) {
+        if (forceDisplayRedraw) {
+          performFullDisplayRedraw();
+        } else {
+          tft.fillScreen(bgColor);
+          lastGlobalBgColor = bgColor;
+          // Сбрасываем кэш, чтобы всё перерисовалось
+          for (int i = 0; i < 4; i++) {
+            lastDisplayTemps[i] = -1000.0f;
+            lastDisplayDeltas[i] = -1000.0f;
+          }
+          lastMode2TimeString = "";
+          displayInitialized = true;
+
+          const char* colorName = "Неизвестный";
+          if (bgColor == COLOR_GREEN) colorName = "ЗЕЛЁНЫЙ";
+          else if (bgColor == COLOR_YELLOW) colorName = "ЖЁЛТЫЙ";
+          else if (bgColor == COLOR_RED) colorName = "КРАСНЫЙ";
+          Serial.printf("[MODE2] Фон: %s (%04X)\n", colorName, bgColor);
+        }
+      }
+
       // Обновление времени MODE2
       String currentTime = mode2_timer_get_formatted();
-      if (currentTime != cachedMode2TimeString) {
+      if (currentTime != lastMode2TimeString) {
         tft.fillRect(170, 0, 70, 30, bgColor);
         tft.setTextFont(FONT_DELTA);
         tft.setTextColor(textColor, bgColor);
         tft.setCursor(170, 5);
         tft.print(currentTime);
         tft.setTextFont(FONT_BIG);
-        cachedMode2TimeString = currentTime;
+        lastMode2TimeString = currentTime;
       }
-      
+
       // Обновление датчиков
       for (int i = 0; i < 4; i++) {
         if (!sensors[i].found) continue;
-        
+
         float temp = sysData.temps[i];
         float delta = sysData.deltas[i];
         int y = displayYPositions[i];
-        
+
         if (!display_is_valid_temperature(temp)) continue;
-        
-        // Более чувствительный порог для MODE2
+
+        // Более чувствительный порог для MODE2 (0.05°C)
         bool needRedraw = false;
-        if (fabs(temp - cachedTemps[i]) >= 0.05f) needRedraw = true;
-        else if (fabs(delta - cachedDeltas[i]) >= 0.01f) needRedraw = true;
-        
-        if (needRedraw) {
-          display_mode2_draw_sensor(i, y, temp, delta, bgColor, textColor);
-          cachedTemps[i] = temp;
-          cachedDeltas[i] = delta;
-        }
+        if (fabs(temp - lastDisplayTemps[i]) >= 0.05f) needRedraw = true;
+        else if (fabs(delta - lastDisplayDeltas[i]) >= 0.01f) needRedraw = true;
+
+        if (!needRedraw) continue;
+
+        // Отрисовка через модуль display_modes
+        display_mode2_draw_sensor(i, y, temp, delta, bgColor, textColor);
+
+        // Сохранение в кэш
+        lastDisplayTemps[i] = temp;
+        lastDisplayDeltas[i] = delta;
       }
     }
-    
+
     // ========================================================================
     // 4. ЗАДЕРЖКА ДО СЛЕДУЮЩЕГО ЦИКЛА
     // ========================================================================
@@ -218,21 +226,21 @@ void taskDisplay(void* pvParameters) {
 }
 
 // ============================================================================
-// СБРОС СОСТОЯНИЯ ДИСПЛЕЯ
+// СБРОС СОСТОЯНИЯ ДИСПЛЕЯ (ПРИ ПЕРЕКЛЮЧЕНИИ РЕЖИМОВ)
 // ============================================================================
 void resetDisplayState(uint8_t newMode) {
   Serial.printf("\n🔄 ПОЛНЫЙ СБРОС ДИСПЛЕЯ\n");
   Serial.printf("   Режим: %d -> %d\n", sysData.mode, newMode);
-  
+
   // Атомарное обновление режима
   if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
     sysData.mode = newMode;
     sysData.needsRedraw = true;
     xSemaphoreGive(dataMutex);
   }
-  
+
   forceDisplayRedraw = true;
-  
+
   // Специфичная для режима логика
   if (newMode == 0) {
     mode2_timer_stop();
@@ -240,12 +248,12 @@ void resetDisplayState(uint8_t newMode) {
     timeStartMs = millis();
     timeIsCounting = false;
     Serial.println("   ✓ Таймер стабилизации MODE1 сброшен");
-    
+
   } else if (newMode == 1) {
     mode2_timer_start();
     guildColorState = 0;
     Serial.println("   ✓ Цветовое состояние сброшено в ЗЕЛЁНЫЙ");
-    
+
     // Сохранение базовой температуры гильзы
     if (sensors[3].found) {
       float currentGuildTemp = sensors[3].temp;
@@ -261,23 +269,20 @@ void resetDisplayState(uint8_t newMode) {
       Serial.printf("   ⚠️  Гильза не найдена, базовая по умолчанию: %.1f°C\n", guildBaseTemp);
     }
   }
-  
-  // Сброс кэша
+
+  // Сброс кэша и очереди
   for (int i = 0; i < 4; i++) {
-    cachedTemps[i] = -1000.0f;
-    cachedDeltas[i] = -1000.0f;
+    lastDisplayTemps[i] = -1000.0f;
+    lastDisplayDeltas[i] = -1000.0f;
   }
-  cachedTimeString = "";
-  cachedMode2TimeString = "";
-  cachedDisplayMode = 0xFF;
+  lastTimeString = "";
+  lastMode2TimeString = "";
   displayInitialized = false;
-  
   baseSaved = false;
-  
-  // Очистка очереди
+
   if (dataQueue != NULL) {
     xQueueReset(dataQueue);
   }
-  
+
   Serial.println("   ✓ Сброс состояния завершен\n");
 }

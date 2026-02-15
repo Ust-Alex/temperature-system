@@ -77,9 +77,14 @@ extern bool timeIsCounting;
 extern float guildBaseTemp;
 extern uint8_t guildColorState;
 
-// Кэш отображения
-extern float lastDisplayTemps[4];
-extern float lastDisplayDeltas[4];
+// КЭШ ОТОБРАЖЕНИЯ (для оптимизации, предотвращение мерцания)
+extern float lastDisplayTemps[4];      // Последние отображённые значения температур
+extern float lastDisplayDeltas[4];     // Последние отображённые значения дельт
+extern String lastTimeString;          // Кэш времени для MODE1
+extern String lastMode2TimeString;     // Кэш времени для MODE2
+extern bool displayInitialized;        // Флаг инициализации дисплея
+// lastGlobalBgColor уже должен быть где-то выше (в разделе состояния интерфейса)
+
 
 // Константы для дисплея
 extern const char* sensorNames[4];

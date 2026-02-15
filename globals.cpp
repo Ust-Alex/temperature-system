@@ -1,63 +1,90 @@
+/**
+ * ============================================================================
+ * ФАЙЛ: globals.cpp
+ * ОПРЕДЕЛЕНИЯ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ СИСТЕМЫ
+ * 
+ * ВЕРСИЯ: 1.1 (ДОБАВЛЕНЫ ПЕРЕМЕННЫЕ ДЛЯ КЭШИРОВАНИЯ ДИСПЛЕЯ)
+ * 
+ * ВНИМАНИЕ: Этот файл содержит РЕАЛЬНЫЕ ОПРЕДЕЛЕНИЯ переменных.
+ *           Объявления (extern) находятся в globals.h.
+ * ============================================================================
+ */
+
 #include "globals.h"
 #include "system_config.h"
 
 // ============================================================================
-// ОПРЕДЕЛЕНИЯ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ
+// ОБЪЕКТЫ АППАРАТУРЫ
 // ============================================================================
+TFT_eSPI tft;                          // Главный объект для работы с TFT дисплеем
+OneWire oneWireA(ONE_WIRE_BUS_A);      // Шина 1-Wire для датчика гильзы (GPIO4)
+OneWire oneWireB(ONE_WIRE_BUS_B);      // Шина 1-Wire для датчиков стенок (GPIO16)
+DallasTemperature sensorsA(&oneWireA); // Объект для работы с датчиками на шине A
+DallasTemperature sensorsB(&oneWireB); // Объект для работы с датчиками на шине B
+HardwareSerial dfplayerSerial(2);      // Аппаратный UART2 для DFPlayer Mini
+DFRobotDFPlayerMini myDFPlayer;        // Объект DFPlayer Mini
 
-// Объекты аппаратуры
-TFT_eSPI tft;
-OneWire oneWireA(ONE_WIRE_BUS_A);
-OneWire oneWireB(ONE_WIRE_BUS_B);
-DallasTemperature sensorsA(&oneWireA);
-DallasTemperature sensorsB(&oneWireB);
-HardwareSerial dfplayerSerial(2);
-DFRobotDFPlayerMini myDFPlayer;
+// ============================================================================
+// ОЧЕРЕДИ И МЬЮТЕКСЫ FREERTOS
+// ============================================================================
+QueueHandle_t mp3CommandQueue = NULL;  // Очередь команд для MP3-плеера
+QueueHandle_t dataQueue = NULL;        // Очередь для передачи данных в дисплей
+SemaphoreHandle_t dataMutex = NULL;    // Мьютекс для защиты sysData
+QueueHandle_t eventQueue = NULL;       // Очередь событий от энкодера
 
-// Очереди и мьютексы
-QueueHandle_t mp3CommandQueue = NULL;
-QueueHandle_t dataQueue = NULL;
-SemaphoreHandle_t dataMutex = NULL;
-QueueHandle_t eventQueue = NULL;
+// ============================================================================
+// СИСТЕМНЫЕ ДАННЫЕ
+// ============================================================================
+SystemData_t sysData;                  // Основные данные системы (температуры, дельты, режим)
+Sensor_t sensors[4] = {0};             // Массив данных о датчиках (4 шт.)
 
-// Системные данные
-SystemData_t sysData;
-Sensor_t sensors[4] = {0};
+// ============================================================================
+// ФЛАГИ СОСТОЯНИЯ СИСТЕМЫ
+// ============================================================================
+bool baseSaved = false;                 // Флаг: базовая температура гильзы сохранена для MODE2
+bool systemInitialized = false;         // Флаг: система полностью инициализирована
+bool criticalError = false;             // Флаг: критическая ошибка (потеря гильзы)
+bool forceDisplayRedraw = false;        // Флаг: принудительная перерисовка дисплея
+bool mp3PlayerReady = false;            // Флаг: MP3-плеер инициализирован и готов
 
-// Флаги состояния
-bool baseSaved = false;
-bool systemInitialized = false;
-bool criticalError = false;
-bool forceDisplayRedraw = false;
-bool mp3PlayerReady = false;
+// ============================================================================
+// РЕЖИМЫ И ТАЙМЕРЫ
+// ============================================================================
+uint8_t lastDisplayMode = 0xFF;         // Предыдущий режим отображения (для обнаружения смены)
+uint16_t lastGlobalBgColor = 0xFFFF;    // Последний цвет фона (для оптимизации перерисовки)
+float timeRefTemp = 0.0f;               // Опорная температура для таймера стабилизации MODE1
+uint32_t timeStartMs = 0;               // Время начала отсчёта стабилизации
+bool timeIsCounting = false;             // Флаг: идёт отсчёт времени стабилизации
+float guildBaseTemp = 0.0f;              // Базовая температура гильзы для MODE2
+uint8_t guildColorState = 0;             // Цветовое состояние: 0=зелёный,1=жёлтый,2=красный
 
-// Режимы и таймеры
-uint8_t lastDisplayMode = 0xFF;
-uint16_t lastGlobalBgColor = 0xFFFF;
-float timeRefTemp = 0.0f;
-uint32_t timeStartMs = 0;
-bool timeIsCounting = false;
-float guildBaseTemp = 0.0f;
-uint8_t guildColorState = 0;
+// ============================================================================
+// КЭШ ОТОБРАЖЕНИЯ (ДЛЯ ОПТИМИЗАЦИИ ПЕРЕРИСОВКИ)
+// ============================================================================
+float lastDisplayTemps[4] = { -1000.0f, -1000.0f, -1000.0f, -1000.0f };  // Последние отображённые температуры
+float lastDisplayDeltas[4] = { -1000.0f, -1000.0f, -1000.0f, -1000.0f }; // Последние отображённые дельты
+String lastTimeString = "";            // Кэш времени для MODE1 (чтобы не перерисовывать каждую секунду)
+String lastMode2TimeString = "";       // Кэш времени для MODE2
+bool displayInitialized = false;       // Флаг: дисплей хотя бы раз инициализирован
 
-// Кэш отображения
-float lastDisplayTemps[4] = { 0 };
-float lastDisplayDeltas[4] = { 0 };
-
-// Константы для дисплея
-const char* sensorNames[4] = {
+// ============================================================================
+// КОНСТАНТЫ ДЛЯ ДИСПЛЕЯ
+// ============================================================================
+const char* sensorNames[4] = {          // Текстовые названия датчиков
   "СТЕНКА 100см",
   "СТЕНКА 75см",
   "СТЕНКА 50cm",
   "ГИЛЬЗА"
 };
 
-int bigFontHeight = 0;
-int deltaFontHeight = 0;
-int smallFontHeight = 0;
-int maxTempWidth = 0;
-int maxDeltaWidth = 0;
-const int displayYPositions[4] = { 0, 60, 120, 180 };
+int bigFontHeight = 0;    // Высота большого шрифта (температура)
+int deltaFontHeight = 0;  // Высота шрифта для дельты
+int smallFontHeight = 0;  // Высота мелкого шрифта (подписи)
+int maxTempWidth = 0;     // Максимальная ширина строки температуры (для выравнивания)
+int maxDeltaWidth = 0;    // Максимальная ширина строки дельты (для выравнивания)
+const int displayYPositions[4] = { 0, 60, 120, 180 };  // Y-координаты для 4 датчиков
 
-// Энкодер и интерфейс
-uint8_t systemState = 0;
+// ============================================================================
+// ЭНКОДЕР И УПРАВЛЕНИЕ ИНТЕРФЕЙСОМ
+// ============================================================================
+uint8_t systemState = 0;   // Текущее состояние интерфейса: 0=главный экран, 1=меню
