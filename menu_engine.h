@@ -22,6 +22,7 @@
 // ============================================================================
 typedef enum {
     MENU_STATE_MAIN = 0,        // Главный экран (температуры)
+    MENU_STATE_TOP, 
     MENU_STATE_MODE_SELECT,     // Выбор режима (MODE1/MODE2)
     MENU_STATE_CALIB,           // Калибровка датчиков
     MENU_STATE_STATUS,          // Информация о статусе

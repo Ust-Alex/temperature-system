@@ -3,12 +3,15 @@
  * ФАЙЛ: menu_engine.cpp
  * РЕАЛИЗАЦИЯ УПРАВЛЕНИЯ МЕНЮ ЭНКОДЕРА
  * 
- * ВЕРСИЯ: 1.2 (ИСПРАВЛЕНЫ ЦВЕТА ФОНА И ОЧИСТКА ЭКРАНА)
+ * ВЕРСИЯ: 2.0 (НОВАЯ ЛОГИКА ПОДТВЕРЖДЕНИЯ ЧЕРЕЗ OK)
  * 
- * ОСОБЕННОСТИ:
- * - При входе в MODE_SELECT фон соответствует текущему режиму
- * - Полная очистка экрана при входе в меню (никаких "проступающих" цифр)
- * - Единый шрифт FONT_DELTA для всего текста
+ * СТРУКТУРА МЕНЮ:
+ * - MAIN (главный экран)
+ * - TOP (верхнее меню: MODE, VOLUME, CALIB, SETTINGS)
+ * - MODE (выбор режима с подтверждением через OK)
+ * - VOLUME (регулировка громкости)
+ * - CALIB (калибровка датчиков)
+ * - SETTINGS (настройки порогов)
  * ============================================================================
  */
 
@@ -28,7 +31,7 @@
 #define MENU_INACTIVITY_TIMEOUT 30000  // 30 секунд до автовозврата
 #define MENU_ITEM_HEIGHT 40             // Высота одного пункта меню
 #define MENU_ITEM_WIDTH  220            // Ширина пункта меню
-#define MENU_START_Y     100            // Начальная Y-координата
+#define MENU_START_Y     60             // Начальная Y-координата (сдвинул, чтобы влезло 4 пункта)
 
 // Цвета текста в меню
 #define MENU_TEXT_COLOR   COLOR_WHITE
@@ -42,7 +45,7 @@
 static MenuState_t currentState = MENU_STATE_MAIN;
 static uint32_t lastActivityTime = 0;
 static uint8_t selectedItem = 0;         // Выбранный пункт в текущем подменю
-static bool holdMode = false;             // Режим удержания (для изменения параметров)
+static uint8_t selectedMode = 0;          // 0 = MODE1, 1 = MODE2 (для подтверждения)
 
 // Внешние объекты
 extern TFT_eSPI tft;
@@ -51,75 +54,119 @@ extern uint8_t guildColorState;
 extern float guildBaseTemp;
 
 // ============================================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ОТРИСОВКА)
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================================
 
 /**
- * Полная очистка экрана с заливкой цветом фона
- * Используется при входе в любое меню для предотвращения "проступания" старых цифр
+ * Полная очистка экрана с гарантией, что старые цифры исчезнут
  */
 static void clearScreen(uint16_t bgColor) {
     tft.fillScreen(bgColor);
-    vTaskDelay(pdMS_TO_TICKS(10)); // Короткая задержка для гарантии записи в дисплей
+    // Явно затираем области, где в MAIN были цифры
+    for (int i = 0; i < 4; i++) {
+        int y = displayYPositions[i];
+        tft.fillRect(10, y, maxTempWidth, bigFontHeight, bgColor);
+        tft.fillRect(170, y, 70, 30, bgColor);
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
 }
 
 /**
- * Отрисовка меню выбора режима (MODE_SELECT)
- * Фон соответствует текущему режиму: синий для MODE1, зелёный для MODE2
+ * Отрисовка верхнего меню (TOP)
  */
-static void drawMenuModeSelect() {
-    // Определяем цвет фона в зависимости от текущего режима
+static void drawMenuTop() {
+    clearScreen(COLOR_BLACK);
+    tft.setTextFont(FONT_DELTA);
+    
+    const char* items[] = {"MODE", "VOLUME", "CALIB", "SETTINGS"};
+    
+    for (int i = 0; i < 4; i++) {
+        uint16_t bgColor = (selectedItem == i) ? MENU_SELECT_BG : COLOR_BLACK;
+        uint16_t textColor = (selectedItem == i) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
+        
+        tft.fillRect(10, MENU_START_Y + i * (MENU_ITEM_HEIGHT + 10), MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor);
+        tft.setTextColor(textColor, bgColor);
+        tft.setCursor(30, MENU_START_Y + i * (MENU_ITEM_HEIGHT + 10) + 10);
+        tft.print(items[i]);
+    }
+    
+    tft.setTextColor(MENU_TEXT_COLOR, COLOR_BLACK);
+    tft.setCursor(10, 280);
+    tft.print("Select: turn  Choose: click");
+}
+
+/**
+ * Отрисовка меню выбора режима (MODE)
+ * Пункты: 0 = "--- MODE ---" (возврат), 1 = MODE1, 2 = MODE2, 3 = OK
+ */
+static void drawMenuMode() {
+    // Определяем цвет фона в зависимости от текущего режима (для справки)
     uint16_t bgColor = (sysData.mode == 0) ? COLOR_BLUE : COLOR_GREEN;
     
-    // Полная очистка экрана с заливкой цветом фона
     clearScreen(bgColor);
     
     float currentTemp = sensors[3].found ? sensors[3].temp : 0.0f;
     float baseTemp = guildBaseTemp;
     
-    // Устанавливаем единый шрифт
     tft.setTextFont(FONT_DELTA);
     
-    // Пункт MODE1
-    uint16_t bgColor1 = (selectedItem == 0) ? MENU_SELECT_BG : bgColor;
-    uint16_t textColor1 = (selectedItem == 0) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
+    // Пункт 0: "--- MODE ---" (возврат)
+    uint16_t bgColor0 = (selectedItem == 0) ? MENU_SELECT_BG : bgColor;
+    uint16_t textColor0 = (selectedItem == 0) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
     
-    tft.fillRect(10, MENU_START_Y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor1);
+    tft.fillRect(10, MENU_START_Y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor0);
+    tft.setTextColor(textColor0, bgColor0);
+    tft.setCursor(40, MENU_START_Y + 10);
+    tft.print("--- MODE ---");
+    
+    // Пункт 1: MODE1 (подсвечивается синим, если выбран для подтверждения)
+    uint16_t mode1Color = (selectedMode == 0) ? COLOR_BLUE : bgColor;
+    uint16_t bgColor1 = (selectedItem == 1) ? mode1Color : bgColor;
+    uint16_t textColor1 = (selectedItem == 1 && selectedMode == 0) ? COLOR_WHITE : MENU_TEXT_COLOR;
+    
+    tft.fillRect(10, MENU_START_Y + MENU_ITEM_HEIGHT + 10, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor1);
     tft.setTextColor(textColor1, bgColor1);
-    tft.setCursor(20, MENU_START_Y + 10);
-    tft.print("MODE1");
-    tft.setCursor(150, MENU_START_Y + 10);
-    tft.printf("%.2f C", currentTemp);
-    
-    // Пункт MODE2
-    uint16_t bgColor2 = (selectedItem == 1) ? MENU_SELECT_BG : bgColor;
-    uint16_t textColor2 = (selectedItem == 1) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
-    
-    tft.fillRect(10, MENU_START_Y + MENU_ITEM_HEIGHT + 10, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor2);
-    tft.setTextColor(textColor2, bgColor2);
     tft.setCursor(20, MENU_START_Y + MENU_ITEM_HEIGHT + 20);
-    tft.print("MODE2");
+    tft.print("MODE1");
     tft.setCursor(150, MENU_START_Y + MENU_ITEM_HEIGHT + 20);
-    tft.printf("%.2f C", baseTemp);
+    tft.printf("%05.2f", currentTemp);
     
-    // Подсказка внизу
+    // Пункт 2: MODE2 (подсвечивается зелёным, если выбран для подтверждения)
+    uint16_t mode2Color = (selectedMode == 1) ? COLOR_GREEN : bgColor;
+    uint16_t bgColor2 = (selectedItem == 2) ? mode2Color : bgColor;
+    uint16_t textColor2 = (selectedItem == 2 && selectedMode == 1) ? COLOR_WHITE : MENU_TEXT_COLOR;
+    
+    tft.fillRect(10, MENU_START_Y + 2*(MENU_ITEM_HEIGHT + 10), MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor2);
+    tft.setTextColor(textColor2, bgColor2);
+    tft.setCursor(20, MENU_START_Y + 2*(MENU_ITEM_HEIGHT + 10) + 10);
+    tft.print("MODE2");
+    tft.setCursor(150, MENU_START_Y + 2*(MENU_ITEM_HEIGHT + 10) + 10);
+    tft.printf("%05.2f", baseTemp);
+    
+    // Пункт 3: OK (подтверждение)
+    uint16_t bgColor3 = (selectedItem == 3) ? MENU_SELECT_BG : bgColor;
+    uint16_t textColor3 = (selectedItem == 3) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
+    
+    tft.fillRect(10, MENU_START_Y + 3*(MENU_ITEM_HEIGHT + 10), MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor3);
+    tft.setTextColor(textColor3, bgColor3);
+    tft.setCursor(80, MENU_START_Y + 3*(MENU_ITEM_HEIGHT + 10) + 10);
+    tft.print("OK");
+    
     tft.setTextColor(MENU_TEXT_COLOR, bgColor);
     tft.setCursor(10, 280);
-    tft.print("Click: next  Hold+turn: preview");
+    tft.print("Select: turn  Choose: click  Back: --- MODE ---");
 }
 
 /**
  * Отрисовка меню регулировки громкости MP3
  */
-static void drawMenuMp3Vol() {
-    // Чёрный фон для этого меню
+static void drawMenuVolume() {
     clearScreen(COLOR_BLACK);
-    
     tft.setTextFont(FONT_DELTA);
     tft.setTextColor(MENU_TEXT_COLOR, COLOR_BLACK);
     
     tft.setCursor(20, 80);
-    tft.print("MP3 Volume");
+    tft.print("VOLUME");
     
     // Полоска громкости
     uint8_t vol = 15; // TODO: получить реальную громкость
@@ -132,7 +179,7 @@ static void drawMenuMp3Vol() {
     tft.printf("%d/30", vol);
     
     tft.setCursor(10, 280);
-    tft.print("Hold+turn: change  Click: next");
+    tft.print("Turn: change  Click: confirm");
 }
 
 /**
@@ -144,7 +191,7 @@ static void drawMenuCalib() {
     tft.setTextColor(MENU_TEXT_COLOR, COLOR_BLACK);
     
     tft.setCursor(20, 80);
-    tft.print("Calibration");
+    tft.print("CALIBRATION");
     
     for (int i = 0; i < 4; i++) {
         tft.setCursor(20, 120 + i * 30);
@@ -158,32 +205,7 @@ static void drawMenuCalib() {
     }
     
     tft.setCursor(10, 280);
-    tft.print("Turn: select  Hold+turn: adjust");
-}
-
-/**
- * Отрисовка меню статуса
- */
-static void drawMenuStatus() {
-    clearScreen(COLOR_BLACK);
-    tft.setTextFont(FONT_DELTA);
-    tft.setTextColor(MENU_TEXT_COLOR, COLOR_BLACK);
-    
-    tft.setCursor(20, 80);
-    tft.print("System Status");
-    tft.setCursor(20, 120);
-    tft.printf("Mode: %s", sysData.mode == 0 ? "MODE1" : "MODE2");
-    tft.setCursor(20, 150);
-    tft.printf("Guild: %s", sensors[3].found ? "OK" : "LOST");
-    tft.setCursor(20, 180);
-    tft.printf("Error: %s", criticalError ? "YES" : "NO");
-    tft.setCursor(20, 210);
-    tft.printf("Uptime: %lu min", millis() / 60000);
-    tft.setCursor(20, 240);
-    tft.printf("Base: %.2f C", guildBaseTemp);
-    
-    tft.setCursor(10, 280);
-    tft.print("Click: next");
+    tft.print("Turn: select  Hold+turn: adjust  Click: confirm");
 }
 
 /**
@@ -195,7 +217,7 @@ static void drawMenuSettings() {
     tft.setTextColor(MENU_TEXT_COLOR, COLOR_BLACK);
     
     tft.setCursor(20, 80);
-    tft.print("Settings");
+    tft.print("SETTINGS");
     
     const char* items[] = {"Green/Yellow", "Yellow/Red", "Hysteresis"};
     float values[] = {
@@ -216,7 +238,7 @@ static void drawMenuSettings() {
     }
     
     tft.setCursor(10, 280);
-    tft.print("Turn: select  Hold+turn: change");
+    tft.print("Turn: select  Hold+turn: change  Click: confirm");
 }
 
 // ============================================================================
@@ -226,7 +248,7 @@ static void drawMenuSettings() {
 void menu_init() {
     currentState = MENU_STATE_MAIN;
     selectedItem = 0;
-    holdMode = false;
+    selectedMode = (sysData.mode == 0) ? 0 : 1;
     lastActivityTime = millis();
     Serial.println("[MENU] Модуль инициализирован");
 }
@@ -254,36 +276,166 @@ void menu_handle_event(EncoderEvent_t event) {
     lastActivityTime = millis();
     
     // ========================================================================
-    // РЕЖИМ УДЕРЖАНИЯ (ИЗМЕНЕНИЕ ПАРАМЕТРОВ)
+    // ОБРАБОТКА СОБЫТИЙ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ
     // ========================================================================
-    if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
-        int direction = (event == EVENT_HOLD_RIGHT) ? 1 : -1;
+    switch (currentState) {
         
-        switch (currentState) {
-            case MENU_STATE_MODE_SELECT:
-                // Предварительный просмотр цвета фона
-                if (selectedItem == 0) { // MODE1 выбран
-                    tft.fillScreen(COLOR_BLUE);
-                } else { // MODE2 выбран
-                    tft.fillScreen(COLOR_GREEN);
+        // ========================= ГЛАВНЫЙ ЭКРАН =========================
+        case MENU_STATE_MAIN:
+            if (event == EVENT_BUTTON_CLICK) {
+                currentState = MENU_STATE_TOP;
+                selectedItem = 0;
+                drawMenuTop();
+                Serial.println("[MENU] Переход в TOP меню");
+            }
+            break;
+        
+        // ========================= ВЕРХНЕЕ МЕНЮ =========================
+        case MENU_STATE_TOP:
+            if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                if (event == EVENT_ENCODER_RIGHT) {
+                    selectedItem = (selectedItem + 1) % 4;
+                } else {
+                    selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
                 }
-                break;
+                drawMenuTop();
+            }
+            else if (event == EVENT_BUTTON_CLICK) {
+                switch (selectedItem) {
+                    case 0: // MODE
+                        currentState = MENU_STATE_MODE_SELECT;
+                        selectedItem = 1;  // По умолчанию выбираем MODE1
+                        selectedMode = (sysData.mode == 0) ? 0 : 1;
+                        drawMenuMode();
+                        Serial.println("[MENU] Переход в MODE");
+                        break;
+                    case 1: // VOLUME
+                        currentState = MENU_STATE_MP3_VOL;
+                        selectedItem = 0;
+                        drawMenuVolume();
+                        Serial.println("[MENU] Переход в VOLUME");
+                        break;
+                    case 2: // CALIB
+                        currentState = MENU_STATE_CALIB;
+                        selectedItem = 0;
+                        drawMenuCalib();
+                        Serial.println("[MENU] Переход в CALIB");
+                        break;
+                    case 3: // SETTINGS
+                        currentState = MENU_STATE_SETTINGS;
+                        selectedItem = 0;
+                        drawMenuSettings();
+                        Serial.println("[MENU] Переход в SETTINGS");
+                        break;
+                }
+            }
+            break;
+        
+        // ========================= ВЫБОР РЕЖИМА (MODE) =========================
+        case MENU_STATE_MODE_SELECT:
+            if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                // Поворот - переключение выбранного пункта (0,1,2,3)
+                if (event == EVENT_ENCODER_RIGHT) {
+                    selectedItem = (selectedItem + 1) % 4;
+                } else {
+                    selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
+                }
                 
-            case MENU_STATE_MP3_VOL:
+                // Если перешли на MODE1 или MODE2, автоматически делаем их выбранными для подтверждения
+                if (selectedItem == 1) {
+                    selectedMode = 0;  // Выбрали MODE1
+                } else if (selectedItem == 2) {
+                    selectedMode = 1;  // Выбрали MODE2
+                }
+                
+                drawMenuMode();
+                Serial.printf("[MENU] MODE: выбран пункт %d, выбранный режим: %d\n", selectedItem, selectedMode);
+            }
+            else if (event == EVENT_BUTTON_CLICK) {
+                if (selectedItem == 0) {
+                    // Нажатие на "--- MODE ---" - возврат в TOP
+                    currentState = MENU_STATE_TOP;
+                    selectedItem = 0;
+                    drawMenuTop();
+                    Serial.println("[MENU] Возврат в TOP меню");
+                }
+                else if (selectedItem == 1) {
+                    // Нажатие на MODE1 - запоминаем выбор
+                    selectedMode = 0;
+                    drawMenuMode();  // Перерисовываем с подсветкой
+                    Serial.println("[MENU] Выбран MODE1 (ожидает подтверждения)");
+                }
+                else if (selectedItem == 2) {
+                    // Нажатие на MODE2 - запоминаем выбор
+                    selectedMode = 1;
+                    drawMenuMode();  // Перерисовываем с подсветкой
+                    Serial.println("[MENU] Выбран MODE2 (ожидает подтверждения)");
+                }
+                else if (selectedItem == 3) {
+                    // Нажатие на OK - подтверждение выбора
+                    uint8_t newMode = selectedMode;
+                    Serial.printf("[MENU] Подтверждение: переключение в режим %d\n", newMode);
+                    resetDisplayState(newMode);
+                    currentState = MENU_STATE_MAIN;
+                    forceDisplayRedraw = true;
+                }
+            }
+            break;
+        
+        // ========================= РЕГУЛИРОВКА ГРОМКОСТИ =========================
+        case MENU_STATE_MP3_VOL:
+            if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
                 // Изменение громкости
                 // TODO: реализовать
-                break;
-                
-            case MENU_STATE_CALIB:
-                // Изменение калибровки
+                Serial.println("[MENU] Изменение громкости (TODO)");
+            }
+            else if (event == EVENT_BUTTON_CLICK) {
+                // Подтверждение, возврат в TOP
+                currentState = MENU_STATE_TOP;
+                selectedItem = 1;  // Возвращаемся к пункту VOLUME
+                drawMenuTop();
+                Serial.println("[MENU] Возврат в TOP из VOLUME");
+            }
+            break;
+        
+        // ========================= КАЛИБРОВКА =========================
+        case MENU_STATE_CALIB:
+            if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                if (event == EVENT_ENCODER_RIGHT) {
+                    selectedItem = (selectedItem + 1) % 4;
+                } else {
+                    selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
+                }
+                drawMenuCalib();
+            }
+            else if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
+                int direction = (event == EVENT_HOLD_RIGHT) ? 1 : -1;
                 if (selectedItem >= 0 && selectedItem < 4) {
                     calibrationOffsets[selectedItem] += 0.05f * direction;
                     drawMenuCalib();
                 }
-                break;
-                
-            case MENU_STATE_SETTINGS:
-                // Изменение настроек
+            }
+            else if (event == EVENT_BUTTON_CLICK) {
+                // Подтверждение, возврат в TOP
+                currentState = MENU_STATE_TOP;
+                selectedItem = 2;  // Возвращаемся к пункту CALIB
+                drawMenuTop();
+                Serial.println("[MENU] Возврат в TOP из CALIB");
+            }
+            break;
+        
+        // ========================= НАСТРОЙКИ =========================
+        case MENU_STATE_SETTINGS:
+            if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                if (event == EVENT_ENCODER_RIGHT) {
+                    selectedItem = (selectedItem + 1) % 3;
+                } else {
+                    selectedItem = (selectedItem == 0) ? 2 : selectedItem - 1;
+                }
+                drawMenuSettings();
+            }
+            else if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
+                int direction = (event == EVENT_HOLD_RIGHT) ? 1 : -1;
                 if (selectedItem == 0) {
                     float val = settings_get_green_threshold() + 0.01f * direction;
                     if (val > 0 && val < 1.0) settings_set_green_threshold(val);
@@ -295,101 +447,16 @@ void menu_handle_event(EncoderEvent_t event) {
                     if (val > 0 && val < 0.1) settings_set_hysteresis(val);
                 }
                 drawMenuSettings();
-                break;
-                
-            default:
-                break;
-        }
-        return;
-    }
-    
-    // ========================================================================
-    // ОБЫЧНЫЙ РЕЖИМ (БЕЗ УДЕРЖАНИЯ)
-    // ========================================================================
-    switch (currentState) {
-        case MENU_STATE_MAIN:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_MODE_SELECT;
-                selectedItem = (sysData.mode == 0) ? 0 : 1;
-                drawMenuModeSelect();
-                Serial.println("[MENU] Переход в MODE_SELECT");
+            }
+            else if (event == EVENT_BUTTON_CLICK) {
+                // Подтверждение, возврат в TOP
+                currentState = MENU_STATE_TOP;
+                selectedItem = 3;  // Возвращаемся к пункту SETTINGS
+                drawMenuTop();
+                Serial.println("[MENU] Возврат в TOP из SETTINGS");
             }
             break;
-            
-        case MENU_STATE_MODE_SELECT:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_MP3_VOL;
-                drawMenuMp3Vol();
-                Serial.println("[MENU] Переход в MP3_VOL");
-            }
-            else if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
-                if (event == EVENT_ENCODER_RIGHT) {
-                    selectedItem = (selectedItem + 1) % 2;
-                } else {
-                    selectedItem = (selectedItem == 0) ? 1 : 0;
-                }
-                drawMenuModeSelect();
-            }
-            break;
-            
-        case MENU_STATE_MP3_VOL:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_CALIB;
-                selectedItem = 0;
-                drawMenuCalib();
-                Serial.println("[MENU] Переход в CALIB");
-            }
-            break;
-            
-        case MENU_STATE_CALIB:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_STATUS;
-                drawMenuStatus();
-                Serial.println("[MENU] Переход в STATUS");
-            }
-            else if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
-                if (event == EVENT_ENCODER_RIGHT) {
-                    selectedItem = (selectedItem + 1) % 4;
-                } else {
-                    selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
-                }
-                drawMenuCalib();
-            }
-            break;
-            
-        case MENU_STATE_STATUS:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_SETTINGS;
-                selectedItem = 0;
-                drawMenuSettings();
-                Serial.println("[MENU] Переход в SETTINGS");
-            }
-            break;
-            
-        case MENU_STATE_SETTINGS:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_WIFI;
-                // drawMenuWifi(); // TODO
-                Serial.println("[MENU] Переход в WIFI");
-            }
-            else if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
-                if (event == EVENT_ENCODER_RIGHT) {
-                    selectedItem = (selectedItem + 1) % 3;
-                } else {
-                    selectedItem = (selectedItem == 0) ? 2 : selectedItem - 1;
-                }
-                drawMenuSettings();
-            }
-            break;
-            
-        case MENU_STATE_WIFI:
-            if (event == EVENT_BUTTON_CLICK) {
-                currentState = MENU_STATE_MAIN;
-                forceDisplayRedraw = true;
-                Serial.println("[MENU] Возврат в MAIN");
-            }
-            break;
-            
+        
         default:
             break;
     }
