@@ -11,14 +11,16 @@ static bool settingsLoaded = false;
 // ============================================================================
 // ЗНАЧЕНИЯ ПО УМОЛЧАНИЮ
 // ============================================================================
+// В раздел DEFAULT_SETTINGS добавить:
 static const SystemSettings_t DEFAULT_SETTINGS = {
   .magic = 0xAA55,
-  .version = 1,
-  .calibrationOffsets = {0, 0, 0, 0},
-  .referenceSensor = 2,  // 50см по умолчанию
+  .version = 2,  // Увеличиваем версию!
+  .calibrationOffsets = { 0, 0, 0, 0 },
+  .referenceSensor = 2,
   .greenThreshold = GREEN_TO_YELLOW_THRESHOLD,
   .yellowThreshold = YELLOW_TO_RED_THRESHOLD,
   .hysteresis = HYSTERESIS_VALUE,
+  .mp3Volume = 15,  // Громкость по умолчанию (середина)
   .wifiSSID = "",
   .wifiPassword = "",
   .mqttServer = "",
@@ -28,20 +30,39 @@ static const SystemSettings_t DEFAULT_SETTINGS = {
   .calibrationEnabled = true,
   .wifiEnabled = false,
   .mqttEnabled = false,
-  .reserved = {0}
+  .reserved = { 0 }
 };
+
+// ============================================================================
+// MP3 ГРОМКОСТЬ (НОВЫЕ ФУНКЦИИ)
+// ============================================================================
+uint8_t settings_get_mp3_volume() {
+  return settings_get()->mp3Volume;
+}
+
+void settings_set_mp3_volume(uint8_t vol) {
+  if (vol > 30) vol = 30;
+  settings_get()->mp3Volume = vol;
+  settings_save();
+
+  // Отправляем команду в MP3-плеер
+  Mp3Command_t volCmd = { MP3_CMD_SET_VOLUME, vol };
+  sendMP3Command(volCmd);
+
+  Serial.printf("[SETTINGS] Громкость MP3 установлена: %d/30\n", vol);
+}
 
 // ============================================================================
 // ИНИЦИАЛИЗАЦИЯ
 // ============================================================================
 void settings_init() {
   Serial.println("[SETTINGS] Инициализация...");
-  
+
   EEPROM.begin(sizeof(SystemSettings_t) + 16);  // Немного с запасом
-  
+
   // Читаем из EEPROM
   EEPROM.get(0, currentSettings);
-  
+
   // Проверяем валидность
   if (currentSettings.magic != 0xAA55 || currentSettings.version != 1) {
     Serial.println("[SETTINGS] Настройки не найдены или устарели. Загружаем defaults.");
@@ -50,7 +71,7 @@ void settings_init() {
     Serial.println("[SETTINGS] Настройки загружены из EEPROM.");
     settingsLoaded = true;
   }
-  
+
   // Применяем к глобальным переменным
   // (пока просто выводим)
   settings_print();
@@ -58,19 +79,19 @@ void settings_init() {
 
 void settings_save() {
   Serial.println("[SETTINGS] Сохранение...");
-  
+
   currentSettings.magic = 0xAA55;
   currentSettings.version = 1;
-  
+
   EEPROM.put(0, currentSettings);
   EEPROM.commit();
-  
+
   Serial.println("[SETTINGS] Сохранено.");
 }
 
 void settings_reset() {
   Serial.println("[SETTINGS] Сброс к заводским настройкам.");
-  
+
   memcpy(&currentSettings, &DEFAULT_SETTINGS, sizeof(SystemSettings_t));
   settings_save();
   settingsLoaded = true;
@@ -151,34 +172,34 @@ void settings_set_hysteresis(float value) {
 // ============================================================================
 void settings_print() {
   SystemSettings_t* s = settings_get();
-  
+
   Serial.println("\n" + String(50, '='));
   Serial.println("ТЕКУЩИЕ НАСТРОЙКИ СИСТЕМЫ");
   Serial.println(String(50, '='));
-  
+
   Serial.printf("Версия: %d\n", s->version);
   Serial.printf("Магия: 0x%04X\n", s->magic);
-  
+
   Serial.println("\n--- Калибровка ---");
   Serial.printf("Эталонный датчик: %d\n", s->referenceSensor);
   for (int i = 0; i < 4; i++) {
     Serial.printf("  Offset[%d]: %+.2f°C\n", i, s->calibrationOffsets[i]);
   }
   Serial.printf("Калибровка: %s\n", s->calibrationEnabled ? "ВКЛ" : "ВЫКЛ");
-  
+
   Serial.println("\n--- Цветовые пороги ---");
   Serial.printf("Зелёный→Жёлтый: %.3f°C\n", s->greenThreshold);
   Serial.printf("Жёлтый→Красный: %.3f°C\n", s->yellowThreshold);
   Serial.printf("Гистерезис: %.3f°C\n", s->hysteresis);
-  
+
   Serial.println("\n--- WiFi (будущее) ---");
   Serial.printf("SSID: %s\n", s->wifiSSID);
   Serial.printf("Включён: %s\n", s->wifiEnabled ? "ДА" : "НЕТ");
-  
+
   Serial.println("\n--- MQTT (будущее) ---");
   Serial.printf("Сервер: %s\n", s->mqttServer);
   Serial.printf("Порт: %d\n", s->mqttPort);
   Serial.printf("Включён: %s\n", s->mqttEnabled ? "ДА" : "НЕТ");
-  
+
   Serial.println(String(50, '=') + "\n");
 }

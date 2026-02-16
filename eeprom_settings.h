@@ -21,6 +21,9 @@ typedef struct {
   float yellowThreshold;    // Порог жёлтый→красный
   float hysteresis;         // Гистерезис
   
+  // MP3 настройки (НОВОЕ)
+  uint8_t mp3Volume;        // Громкость MP3 (0-30)
+  
   // WiFi (для будущего)
   char wifiSSID[32];
   char wifiPassword[64];
@@ -69,6 +72,12 @@ float settings_get_yellow_threshold();
 void settings_set_yellow_threshold(float value);
 float settings_get_hysteresis();
 void settings_set_hysteresis(float value);
+
+// ============================================================================
+// MP3 ГРОМКОСТЬ (НОВЫЕ ФУНКЦИИ)
+// ============================================================================
+uint8_t settings_get_mp3_volume();
+void settings_set_mp3_volume(uint8_t vol);
 
 // ============================================================================
 // СЛУЖЕБНЫЕ ФУНКЦИИ
