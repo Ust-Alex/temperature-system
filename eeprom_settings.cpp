@@ -1,6 +1,7 @@
 #include "eeprom_settings.h"
 #include "system_config.h"
 #include "globals.h"
+#include "mp3_player.h"
 
 // ============================================================================
 // ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ

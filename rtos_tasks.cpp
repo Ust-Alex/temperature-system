@@ -46,31 +46,11 @@ static uint32_t lastUserActivity = 0;  // Время последней акти
 // ЗАДАЧА ЭНКОДЕРА
 // ============================================================================
 void taskEncoder(void* pv) {
-  TickType_t lastWakeTime = xTaskGetTickCount();
-
-  Serial.println("🎛️  Задача энкодера запущена");
-
-  while (1) {
-    EncoderEvent_t event = encoder_tick();
-
-    if (event != EVENT_NONE) {
-      Serial.printf("[ENCODER] Событие: %d\n", event);
+    TickType_t lastWakeTime = xTaskGetTickCount();
+    while (1) {
+        encoder_tick();  // Просто вызываем, события сами уходят в очередь
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(ENCODER_POLL_INTERVAL));
     }
-
-    if (event != EVENT_NONE && eventQueue != NULL) {
-      if (xQueueSend(eventQueue, &event, 0) != pdTRUE) {
-        static uint32_t lastQueueError = 0;
-        uint32_t now = pdTICKS_TO_MS(xTaskGetTickCount());
-
-        if (now - lastQueueError > 5000) {
-          Serial.println("⚠️  [ENCODER] Очередь событий переполнена");
-          lastQueueError = now;
-        }
-      }
-    }
-
-    vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(ENCODER_POLL_INTERVAL));
-  }
 }
 
 // ============================================================================
