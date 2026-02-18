@@ -20,6 +20,7 @@
 #include "encoder_engine.h"  // Модуль для работы с энкодером
 #include "calibration_simple.h"
 #include "display_engine.h"  // ДОБАВЛЕНО для resetDisplayState
+#include "eeprom_settings.h"
 
 extern float calibrationOffsets[4];  // Массив offset'ов
 extern int referenceSensor;          // Индекс эталонного датчика
@@ -212,8 +213,9 @@ void taskSerial(void* pv) {
       else if (command == "CALIB RESET") {
         for (int i = 0; i < 4; i++) {
           calibrationOffsets[i] = 0.0f;
+          settings_set_offset(i, 0.0f);
         }
-        saveOffsetsToEEPROM();
+        settings_save();
         Serial.println("[CALIB] ✅ Все offset сброшены в 0");
       }
 

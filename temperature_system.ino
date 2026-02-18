@@ -51,7 +51,7 @@ void setup() {
   // Основная инициализация аппаратуры
   Serial.println("\n🔄 Запуск основной инициализации...");
   initHardware();
-  loadOffsetsFromEEPROM();
+  calibration_init();
 
   // Создание задач FreeRTOS
   Serial.println("\n[INIT] Создание задач...");

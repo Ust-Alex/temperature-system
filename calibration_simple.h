@@ -8,6 +8,8 @@ extern float calibrationOffsets[4];
 extern int referenceSensor;
 extern bool calibrationEnabled;
 
+void calibration_init();
+
 // Загрузка/сохранение
 void loadOffsetsFromEEPROM();
 void saveOffsetsToEEPROM();

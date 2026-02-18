@@ -17,7 +17,7 @@ static const SystemSettings_t DEFAULT_SETTINGS = {
   .magic = 0xAA55,
   .version = 2,  // Увеличиваем версию!
   .calibrationOffsets = { 0, 0, 0, 0 },
-  .referenceSensor = 2,
+  .referenceSensor = 3,
   .greenThreshold = GREEN_TO_YELLOW_THRESHOLD,
   .yellowThreshold = YELLOW_TO_RED_THRESHOLD,
   .hysteresis = HYSTERESIS_VALUE,
@@ -111,6 +111,15 @@ SystemSettings_t* settings_get() {
 // ============================================================================
 // КАЛИБРОВКА
 // ============================================================================
+bool settings_get_calibration_enabled() {
+    return settings_get()->calibrationEnabled;
+}
+
+void settings_set_calibration_enabled(bool enabled) {
+    settings_get()->calibrationEnabled = enabled;
+    settings_save();
+}
+
 float settings_get_offset(int idx) {
   if (idx < 0 || idx >= 4) return 0;
   return settings_get()->calibrationOffsets[idx];

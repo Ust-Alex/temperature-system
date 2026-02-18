@@ -62,6 +62,8 @@ float settings_get_offset(int idx);       // Получить поправку �
 void settings_set_offset(int idx, float offset); // Установить поправку
 void settings_set_reference(int idx);     // Установить эталонный датчик
 int settings_get_reference();              // Получить эталонный датчик
+bool settings_get_calibration_enabled();
+void settings_set_calibration_enabled(bool enabled);
 
 // ============================================================================
 // ЦВЕТОВЫЕ ПОРОГИ
