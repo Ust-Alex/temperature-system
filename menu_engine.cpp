@@ -1,6 +1,4 @@
-/**
- * ============================================================================
- * ФАЙЛ: menu_engine.cpp
+/** * ФАЙЛ: menu_engine.cpp
  * РЕАЛИЗАЦИЯ УПРАВЛЕНИЯ МЕНЮ ЭНКОДЕРА
  * 
  * ВЕРСИЯ: 5.0 (ИСПРАВЛЕННАЯ ЛОГИКА MODE)
@@ -142,33 +140,33 @@ static void drawMenuMode() {
 }
 
 static void drawMenuVolume() {
-  clearScreen(MENU_BG_COLOR);
-  tft.setTextFont(FONT_DELTA);
-
-  const char* items[] = { "--- VOLUME ---", "", ">>>>>", "OK" };
-  int y = MENU_START_Y;
-
-  for (int i = 0; i < 4; i++) {
-    if (i != 1) {
-      uint16_t bgColor = (i == selectedItem) ? MENU_SELECT_BG : MENU_BG_COLOR;
-      uint16_t textColor = (i == selectedItem) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
-
-      tft.fillRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor);
-      tft.setTextColor(textColor, bgColor);
-      tft.setCursor(40, y + 10);
-      tft.print(items[i]);
+    clearScreen(MENU_BG_COLOR);           // Весь экран заливается чёрным
+    tft.setTextFont(FONT_DELTA);          // Стандартный шрифт для надписей
+    
+    const char* items[] = {"--- VOLUME ---", "", ">>>>>", "OK"};
+    int y = MENU_START_Y;                  // Стартовая позиция по Y (сейчас 5)
+    
+    for (int i = 0; i < 4; i++) {
+        if (i != 1) {  // Для всех пунктов кроме цифры
+            uint16_t bgColor = (i == selectedItem) ? MENU_SELECT_BG : MENU_BG_COLOR;
+            uint16_t textColor = (i == selectedItem) ? MENU_SELECT_TEXT : MENU_TEXT_COLOR;
+            
+            tft.fillRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, bgColor);
+            tft.setTextColor(textColor, bgColor);
+            tft.setCursor(40, y + 10);
+            tft.print(items[i]);
+        }
+        
+        if (i == 1) {  // Цифра громкости
+            tft.setTextFont(FONT_BIG);     // Крупный шрифт
+            tft.setTextColor(MENU_TEXT_COLOR, MENU_BG_COLOR);
+            tft.setCursor(80, y + 5);      // ПОЗИЦИЯ ЦИФРЫ
+            tft.printf("%d", settings_get_mp3_volume());
+            tft.setTextFont(FONT_DELTA);    // Возврат к стандартному шрифту
+        }
+        
+        y += MENU_ITEM_HEIGHT + MENU_ITEM_SPACING;  // Сдвиг на следующий пункт
     }
-
-    if (i == 1) {
-      tft.setTextFont(FONT_BIG);
-      tft.setTextColor(MENU_TEXT_COLOR, MENU_BG_COLOR);
-      tft.setCursor(80, y + 5);
-      tft.printf("%d", settings_get_mp3_volume());
-      tft.setTextFont(FONT_DELTA);
-    }
-
-    y += MENU_ITEM_HEIGHT + MENU_ITEM_SPACING;
-  }
 }
 
 // ============================================================================
@@ -185,104 +183,104 @@ static void updateMenuItem(int index, uint16_t bgColor, uint16_t textColor, cons
 }
 
 static void updateMenuModeSelection() {
-    // Защита индексов
-    if (selectedItem > 3) selectedItem = 0;
-    if (lastSelectedItem > 3 && lastSelectedItem != 255) lastSelectedItem = 0;
-    if (lastSelectedItem == 255) lastSelectedItem = 0;
-    
-    // 1. ОБНОВЛЕНИЕ КУРСОРА (белая рамка)
-    if (selectedItem != lastSelectedItem) {
-        // Полностью перерисовываем старый пункт с фоном меню
-        int yOld = MENU_START_Y + lastSelectedItem * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
-        tft.fillRect(10, yOld, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, lastBgColor);
-        tft.setTextColor(MENU_TEXT_COLOR, lastBgColor);
-        tft.setCursor(40, yOld + 10);
-        
-        if (lastSelectedItem == 0) tft.print("--- MODE ---");
-        else if (lastSelectedItem == 1) tft.print("MODE1");
-        else if (lastSelectedItem == 2) tft.print("MODE2");
-        else if (lastSelectedItem == 3) tft.print("OK");
-        
-        // Если старый пункт - MODE1 или MODE2, перерисовываем температуру
-        if (lastSelectedItem == 1) {
-            tft.setCursor(150, yOld + 10);
-            tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
-        }
-        if (lastSelectedItem == 2) {
-            tft.setCursor(150, yOld + 10);
-            tft.printf("%05.2f", guildBaseTemp);
-        }
-        
-        // Рисуем новый пункт с белым фоном
-        int yNew = MENU_START_Y + selectedItem * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
-        tft.fillRect(10, yNew, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, MENU_SELECT_BG);
-        tft.setTextColor(MENU_SELECT_TEXT, MENU_SELECT_BG);
-        tft.setCursor(40, yNew + 10);
-        
-        if (selectedItem == 0) tft.print("--- MODE ---");
-        else if (selectedItem == 1) tft.print("MODE1");
-        else if (selectedItem == 2) tft.print("MODE2");
-        else if (selectedItem == 3) tft.print("OK");
-        
-        // Если новый пункт - MODE1 или MODE2, рисуем температуру
-        if (selectedItem == 1) {
-            tft.setCursor(150, yNew + 10);
-            tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
-        }
-        if (selectedItem == 2) {
-            tft.setCursor(150, yNew + 10);
-            tft.printf("%05.2f", guildBaseTemp);
-        }
-        
-        lastSelectedItem = selectedItem;
+  // Защита индексов
+  if (selectedItem > 3) selectedItem = 0;
+  if (lastSelectedItem > 3 && lastSelectedItem != 255) lastSelectedItem = 0;
+  if (lastSelectedItem == 255) lastSelectedItem = 0;
+
+  // 1. ОБНОВЛЕНИЕ КУРСОРА (белая рамка)
+  if (selectedItem != lastSelectedItem) {
+    // Полностью перерисовываем старый пункт с фоном меню
+    int yOld = MENU_START_Y + lastSelectedItem * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
+    tft.fillRect(10, yOld, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, lastBgColor);
+    tft.setTextColor(MENU_TEXT_COLOR, lastBgColor);
+    tft.setCursor(40, yOld + 10);
+
+    if (lastSelectedItem == 0) tft.print("--- MODE ---");
+    else if (lastSelectedItem == 1) tft.print("MODE1");
+    else if (lastSelectedItem == 2) tft.print("MODE2");
+    else if (lastSelectedItem == 3) tft.print("OK");
+
+    // Если старый пункт - MODE1 или MODE2, перерисовываем температуру
+    if (lastSelectedItem == 1) {
+      tft.setCursor(150, yOld + 10);
+      tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
     }
-    
-    // 2. ОБНОВЛЕНИЕ ЦВЕТНОЙ РАМКИ (выбранный режим)
-    if (modeConfirmed) {
-        // Рисуем подсветку для выбранного режима (всегда, даже если курсор на OK)
-        uint16_t color = (selectedMode == 0) ? COLOR_BLUE : COLOR_GREEN;
-        int y = MENU_START_Y + (selectedMode + 1) * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
-        
-        tft.fillRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, color);
-        tft.setTextColor(COLOR_WHITE, color);
-        tft.setCursor(40, y + 10);
-        tft.print(selectedMode == 0 ? "MODE1" : "MODE2");
-        
-        // Рисуем температуру
-        tft.setCursor(150, y + 10);
-        if (selectedMode == 0) {
-            tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
-        } else {
-            tft.printf("%05.2f", guildBaseTemp);
-        }
-        
-        // Если курсор сейчас на этом же пункте, нужно поверх нарисовать белую рамку
-        if (selectedItem == selectedMode + 1) {
-            tft.drawRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, MENU_SELECT_BG);
-        }
-        
-        lastSelectedMode = selectedMode;
+    if (lastSelectedItem == 2) {
+      tft.setCursor(150, yOld + 10);
+      tft.printf("%05.2f", guildBaseTemp);
+    }
+
+    // Рисуем новый пункт с белым фоном
+    int yNew = MENU_START_Y + selectedItem * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
+    tft.fillRect(10, yNew, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, MENU_SELECT_BG);
+    tft.setTextColor(MENU_SELECT_TEXT, MENU_SELECT_BG);
+    tft.setCursor(40, yNew + 10);
+
+    if (selectedItem == 0) tft.print("--- MODE ---");
+    else if (selectedItem == 1) tft.print("MODE1");
+    else if (selectedItem == 2) tft.print("MODE2");
+    else if (selectedItem == 3) tft.print("OK");
+
+    // Если новый пункт - MODE1 или MODE2, рисуем температуру
+    if (selectedItem == 1) {
+      tft.setCursor(150, yNew + 10);
+      tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
+    }
+    if (selectedItem == 2) {
+      tft.setCursor(150, yNew + 10);
+      tft.printf("%05.2f", guildBaseTemp);
+    }
+
+    lastSelectedItem = selectedItem;
+  }
+
+  // 2. ОБНОВЛЕНИЕ ЦВЕТНОЙ РАМКИ (выбранный режим)
+  if (modeConfirmed) {
+    // Рисуем подсветку для выбранного режима (всегда, даже если курсор на OK)
+    uint16_t color = (selectedMode == 0) ? COLOR_BLUE : COLOR_GREEN;
+    int y = MENU_START_Y + (selectedMode + 1) * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
+
+    tft.fillRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, color);
+    tft.setTextColor(COLOR_WHITE, color);
+    tft.setCursor(40, y + 10);
+    tft.print(selectedMode == 0 ? "MODE1" : "MODE2");
+
+    // Рисуем температуру
+    tft.setCursor(150, y + 10);
+    if (selectedMode == 0) {
+      tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
     } else {
-        // Если режим не выбран, но lastSelectedMode ещё хранит старое значение,
-        // нужно стереть старую подсветку
-        if (lastSelectedMode != 255) {
-            int y = MENU_START_Y + (lastSelectedMode + 1) * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
-            tft.fillRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, lastBgColor);
-            tft.setTextColor(MENU_TEXT_COLOR, lastBgColor);
-            tft.setCursor(40, y + 10);
-            tft.print(lastSelectedMode == 0 ? "MODE1" : "MODE2");
-            
-            // Рисуем температуру
-            tft.setCursor(150, y + 10);
-            if (lastSelectedMode == 0) {
-                tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
-            } else {
-                tft.printf("%05.2f", guildBaseTemp);
-            }
-            
-            lastSelectedMode = 255;
-        }
+      tft.printf("%05.2f", guildBaseTemp);
     }
+
+    // Если курсор сейчас на этом же пункте, нужно поверх нарисовать белую рамку
+    if (selectedItem == selectedMode + 1) {
+      tft.drawRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, MENU_SELECT_BG);
+    }
+
+    lastSelectedMode = selectedMode;
+  } else {
+    // Если режим не выбран, но lastSelectedMode ещё хранит старое значение,
+    // нужно стереть старую подсветку
+    if (lastSelectedMode != 255) {
+      int y = MENU_START_Y + (lastSelectedMode + 1) * (MENU_ITEM_HEIGHT + MENU_ITEM_SPACING);
+      tft.fillRect(10, y, MENU_ITEM_WIDTH, MENU_ITEM_HEIGHT, lastBgColor);
+      tft.setTextColor(MENU_TEXT_COLOR, lastBgColor);
+      tft.setCursor(40, y + 10);
+      tft.print(lastSelectedMode == 0 ? "MODE1" : "MODE2");
+
+      // Рисуем температуру
+      tft.setCursor(150, y + 10);
+      if (lastSelectedMode == 0) {
+        tft.printf("%05.2f", sensors[3].found ? sensors[3].temp : 0);
+      } else {
+        tft.printf("%05.2f", guildBaseTemp);
+      }
+
+      lastSelectedMode = 255;
+    }
+  }
 }
 
 
@@ -422,107 +420,106 @@ void menu_handle_event(EncoderEvent_t event) {
       }
       break;
 
-case MENU_STATE_MODE_SELECT:
-    // =========================================================================
-    // ОБРАБОТКА ПОВОРОТА (перемещение курсора)
-    // =========================================================================
-    if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+    case MENU_STATE_MODE_SELECT:
+      // =========================================================================
+      // ОБРАБОТКА ПОВОРОТА (перемещение курсора)
+      // =========================================================================
+      if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
         uint8_t newItem = selectedItem;
-        
+
         // Шаг 1: двигаемся в нужном направлении
         if (event == EVENT_ENCODER_RIGHT) {
-            newItem = (selectedItem + 1) % 4;
+          newItem = (selectedItem + 1) % 4;
         } else {
-            newItem = (selectedItem == 0) ? 3 : selectedItem - 1;
+          newItem = (selectedItem == 0) ? 3 : selectedItem - 1;
         }
-        
+
         // Шаг 2: проверяем, доступен ли новый пункт
         bool available = true;
-        if (sysData.mode == 0) { // Мы в синем режиме
-            if (newItem == 1) available = false; // MODE1 недоступен
-        } else { // Мы в зелёном режиме
-            if (newItem == 2) available = false; // MODE2 недоступен
+        if (sysData.mode == 0) {                // Мы в синем режиме
+          if (newItem == 1) available = false;  // MODE1 недоступен
+        } else {                                // Мы в зелёном режиме
+          if (newItem == 2) available = false;  // MODE2 недоступен
         }
-        
+
         // Шаг 3: если недоступен, делаем ещё шаг в том же направлении
         if (!available) {
-            uint8_t secondItem = newItem;
-            if (event == EVENT_ENCODER_RIGHT) {
-                secondItem = (newItem + 1) % 4;
-            } else {
-                secondItem = (newItem == 0) ? 3 : newItem - 1;
-            }
-            
-            // Проверяем второй вариант
-            bool secondAvailable = true;
-            if (sysData.mode == 0) {
-                if (secondItem == 1) secondAvailable = false;
-            } else {
-                if (secondItem == 2) secondAvailable = false;
-            }
-            
-            if (secondAvailable) {
-                newItem = secondItem;
-            } else {
-                // Если и второй недоступен (маловероятно), остаёмся на месте
-                newItem = selectedItem;
-            }
+          uint8_t secondItem = newItem;
+          if (event == EVENT_ENCODER_RIGHT) {
+            secondItem = (newItem + 1) % 4;
+          } else {
+            secondItem = (newItem == 0) ? 3 : newItem - 1;
+          }
+
+          // Проверяем второй вариант
+          bool secondAvailable = true;
+          if (sysData.mode == 0) {
+            if (secondItem == 1) secondAvailable = false;
+          } else {
+            if (secondItem == 2) secondAvailable = false;
+          }
+
+          if (secondAvailable) {
+            newItem = secondItem;
+          } else {
+            // Если и второй недоступен (маловероятно), остаёмся на месте
+            newItem = selectedItem;
+          }
         }
-        
+
         // Если пункт изменился — обновляем
         if (newItem != selectedItem) {
-            selectedItem = newItem;
-            updateMenuModeSelection();
-            Serial.printf("[MENU] MODE: пункт %d\n", selectedItem);
+          selectedItem = newItem;
+          updateMenuModeSelection();
+          Serial.printf("[MENU] MODE: пункт %d\n", selectedItem);
         }
-    }
-    
-    // =========================================================================
-    // ОБРАБОТКА НАЖАТИЯ
-    // =========================================================================
-    else if (event == EVENT_BUTTON_CLICK) {
+      }
+
+      // =========================================================================
+      // ОБРАБОТКА НАЖАТИЯ
+      // =========================================================================
+      else if (event == EVENT_BUTTON_CLICK) {
         if (selectedItem == 0) {
-            // Возврат в TOP
-            currentState = MENU_STATE_TOP;
-            selectedItem = 0;
-            drawMenuTop();
-            Serial.println("[MENU] Возврат в TOP");
+          // Возврат в TOP
+          currentState = MENU_STATE_TOP;
+          selectedItem = 0;
+          drawMenuTop();
+          Serial.println("[MENU] Возврат в TOP");
+        } else if (selectedItem == 1 || selectedItem == 2) {
+          // Выбор режима (MODE1 или MODE2)
+          uint8_t newMode = (selectedItem == 1) ? 0 : 1;
+
+          // Проверяем, что это не текущий режим
+          if (newMode != sysData.mode) {
+            selectedMode = newMode;
+            modeConfirmed = true;
+            updateMenuModeSelection();
+            Serial.printf("[MENU] Выбран режим %d\n", selectedMode);
+          } else {
+            Serial.println("[MENU] Нельзя выбрать текущий режим");
+          }
+        } else if (selectedItem == 3) {
+          // OK — подтверждение выбора
+          if (modeConfirmed) {
+            Serial.printf("[MENU] OK: переключение в режим %d\n", selectedMode);
+            resetDisplayState(selectedMode);
+            currentState = MENU_STATE_MAIN;
+            modeConfirmed = false;
+            forceDisplayRedraw = true;
+          } else {
+            Serial.println("[MENU] Сначала выберите режим");
+          }
         }
-        else if (selectedItem == 1 || selectedItem == 2) {
-            // Выбор режима (MODE1 или MODE2)
-            uint8_t newMode = (selectedItem == 1) ? 0 : 1;
-            
-            // Проверяем, что это не текущий режим
-            if (newMode != sysData.mode) {
-                selectedMode = newMode;
-                modeConfirmed = true;
-                updateMenuModeSelection();
-                Serial.printf("[MENU] Выбран режим %d\n", selectedMode);
-            } else {
-                Serial.println("[MENU] Нельзя выбрать текущий режим");
-            }
-        }
-        else if (selectedItem == 3) {
-            // OK — подтверждение выбора
-            if (modeConfirmed) {
-                Serial.printf("[MENU] OK: переключение в режим %d\n", selectedMode);
-                resetDisplayState(selectedMode);
-                currentState = MENU_STATE_MAIN;
-                modeConfirmed = false;
-                forceDisplayRedraw = true;
-            } else {
-                Serial.println("[MENU] Сначала выберите режим");
-            }
-        }
-    }
-    
-    // =========================================================================
-    // ОБРАБОТКА УДЕРЖАНИЯ (пока не используем)
-    // =========================================================================
-    else if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
+      }
+
+      // =========================================================================
+      // ОБРАБОТКА УДЕРЖАНИЯ (пока не используем)
+      // =========================================================================
+      else if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
         // Ничего не делаем в MODE
-    }
-    break;      if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+      }
+      break;
+      if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
         uint8_t oldItem = selectedItem;
         uint8_t newItem = selectedItem;
 
