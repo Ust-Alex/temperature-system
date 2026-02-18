@@ -272,7 +272,7 @@ void taskSerial(void* pv) {
 void initFreeRTOSObjects() {
   Serial.println("[RTOS] Создание объектов FreeRTOS...");
 
-  dataQueue = xQueueCreate(5, sizeof(SystemData_t));
+  dataQueue = xQueueCreate(20, sizeof(SystemData_t));
   if (dataQueue == NULL) {
     Serial.println("❌ Ошибка создания очереди данных!");
   } else {

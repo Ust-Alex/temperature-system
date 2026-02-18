@@ -29,7 +29,7 @@
 extern TFT_eSPI tft;
 extern SemaphoreHandle_t dataMutex;
 extern QueueHandle_t dataQueue;
-extern QueueHandle_t eventQueue; // Очередь событий энкодера
+extern QueueHandle_t eventQueue;  // Очередь событий энкодера
 
 // ============================================================================
 // ОПРЕДЕЛЕНИЕ ЦВЕТА ФОНА
@@ -91,6 +91,10 @@ void taskDisplay(void* pvParameters) {
     // 3. ЕСЛИ АКТИВНО МЕНЮ - НЕ РИСУЕМ ГЛАВНЫЙ ЭКРАН
     // ========================================================================
     if (menu_is_active()) {
+      // Очищаем очередь, чтобы не переполнялась
+      SystemData_t dummy;
+      while (xQueueReceive(dataQueue, &dummy, 0) == pdTRUE) {}
+
       vTaskDelay(pdMS_TO_TICKS(DISPLAY_UPDATE_MS));
       continue;
     }
