@@ -2,7 +2,11 @@
  * @file menu_drawing.h
  * @brief ЗАГОЛОВОЧНЫЙ ФАЙЛ ГРАФИЧЕСКОГО МОДУЛЯ МЕНЮ
  * 
- * @version 2.0 (Финальная, с правильной передачей параметров)
+ * @version 2.0
+ * @date 2026
+ * 
+ * @details Определяет интерфейс для функций отрисовки меню.
+ *          Все функции получают параметры и не хранят состояние.
  */
 
 #ifndef MENU_DRAWING_H
@@ -14,71 +18,34 @@
 // ============================================================================
 // КОНСТАНТЫ ОТРИСОВКИ
 // ============================================================================
-#define MENU_INACTIVITY_TIMEOUT 30000
-#define MENU_START_Y 5
-#define MENU_ITEM_HEIGHT 40
-#define MENU_ITEM_WIDTH 220
-#define MENU_ITEM_SPACING 5
+#define MENU_INACTIVITY_TIMEOUT 30000  /**< Таймаут неактивности меню (мс) */
+#define MENU_START_Y 5                  /**< Начальная Y-координата первого пункта */
+#define MENU_ITEM_HEIGHT 40              /**< Высота пункта меню */
+#define MENU_ITEM_WIDTH 220               /**< Ширина пункта меню */
+#define MENU_ITEM_SPACING 5               /**< Расстояние между пунктами */
 
 // Цвета
-#define MENU_BG_COLOR COLOR_BLACK
-#define MENU_TEXT_COLOR COLOR_WHITE
-#define MENU_SELECT_BG COLOR_WHITE
-#define MENU_SELECT_TEXT COLOR_BLACK
+#define MENU_BG_COLOR COLOR_BLACK        /**< Цвет фона по умолчанию */
+#define MENU_TEXT_COLOR COLOR_WHITE       /**< Цвет текста по умолчанию */
+#define MENU_SELECT_BG COLOR_WHITE        /**< Цвет фона выбранного пункта */
+#define MENU_SELECT_TEXT COLOR_BLACK      /**< Цвет текста выбранного пункта */
 
 // ============================================================================
-// ФУНКЦИИ ПОЛНОЙ ОТРИСОВКИ (ВСЕГДА ПОЛУЧАЮТ ПАРАМЕТРЫ)
+// ФУНКЦИИ ПОЛНОЙ ОТРИСОВКИ
 // ============================================================================
-
-/**
- * @brief Полная отрисовка верхнего меню
- * @param selectedItem Какой пункт выделен (0-3)
- */
 void drawMenuTop(uint8_t selectedItem);
-
-/**
- * @brief Полная отрисовка экрана выбора режима
- * @param selectedItem Какой пункт выделен (0-3)
- * @param selectedMode Какой режим выбран (0=MODE1, 1=MODE2)
- * @param modeConfirmed Подтверждён ли выбор
- */
 void drawMenuMode(uint8_t selectedItem, uint8_t selectedMode, bool modeConfirmed);
-
-/**
- * @brief Полная отрисовка экрана громкости
- * @param selectedItem Какой пункт выделен (0-3)
- * @param volume Текущее значение громкости
- */
 void drawMenuVolume(uint8_t selectedItem, uint8_t volume);
 
 // ============================================================================
 // ФУНКЦИИ ЧАСТИЧНОГО ОБНОВЛЕНИЯ
 // ============================================================================
-
-/**
- * @brief Обновление выделения в верхнем меню
- * @param oldItem Старый выделенный пункт
- * @param newItem Новый выделенный пункт
- */
 void updateMenuTopSelection(uint8_t oldItem, uint8_t newItem);
-
-/**
- * @brief Обновление экрана выбора режима (курсор и подсветка)
- * @param currentItem Текущий выделенный пункт
- * @param currentSelectedMode Текущий выбранный режим
- * @param isModeConfirmed Подтверждён ли режим
- */
 void updateMenuModeSelection(uint8_t currentItem, uint8_t currentSelectedMode, bool isModeConfirmed);
-
-/**
- * @brief Обновление экрана громкости
- * @param volume Текущая громкость
- * @param currentItem Текущий выделенный пункт
- */
 void updateMenuVolume(uint8_t volume, uint8_t currentItem);
 
 // ============================================================================
-// СБРОС КЭША (ВЫЗЫВАТЬ ПРИ ПОЛНОЙ ОЧИСТКЕ ЭКРАНА)
+// УПРАВЛЕНИЕ КЭШЕМ
 // ============================================================================
 void drawing_reset_cache();
 void drawing_reset_volume_cache();
