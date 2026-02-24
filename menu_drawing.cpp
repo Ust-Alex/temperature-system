@@ -131,18 +131,22 @@ void drawMenuMode(uint8_t selectedItem, uint8_t selectedMode, bool modeConfirmed
 void drawMenuVolume(uint8_t selectedItem, uint8_t volume) {
     clearScreen(MENU_BG_COLOR);
     
-    // Заголовок (всегда одинаковый, выделяется только курсором)
+    // --- Заголовок (индекс 0) ---
     tft.setTextFont(FONT_DELTA);
-    tft.setTextColor(MENU_TEXT_COLOR, MENU_BG_COLOR);
-    tft.setCursor(30, 30);
+    if (selectedItem == 0) {
+        // Подсвечиваем заголовок
+        tft.fillRoundRect(20, 20, 200, 30, 4, MENU_SELECT_BG);
+        tft.setTextColor(MENU_SELECT_TEXT, MENU_SELECT_BG);
+    } else {
+        tft.setTextColor(MENU_TEXT_COLOR, MENU_BG_COLOR);
+    }
+    tft.setCursor(50, 27);
     tft.print("---VOLUME---");
     
-    // Цифра громкости (крупно по центру)
+    // --- Цифра громкости (индекс 1) ---
     tft.setTextFont(FONT_BIG);
-    
-    // Если курсор на цифре (индекс 1) - подсвечиваем
     if (selectedItem == 1) {
-        // Рисуем фон под цифрой
+        // Подсвечиваем цифру
         tft.fillRoundRect(70, 80, 100, 60, 8, MENU_SELECT_BG);
         tft.setTextColor(MENU_SELECT_TEXT, MENU_SELECT_BG);
     } else {
@@ -157,9 +161,9 @@ void drawMenuVolume(uint8_t selectedItem, uint8_t volume) {
     }
     tft.printf("%d", volume);
     
-    // Кнопка >>>>> 
+    // --- Кнопка >>>>> (индекс 2) ---
     tft.setTextFont(FONT_DELTA);
-    int yPos = 160;  // Базовая позиция для >>>>>
+    int yPos = 160;
     
     if (selectedItem == 2) {
         tft.fillRoundRect(40, yPos-5, 160, 30, 6, MENU_SELECT_BG);
@@ -170,8 +174,8 @@ void drawMenuVolume(uint8_t selectedItem, uint8_t volume) {
     tft.setCursor(80, yPos);
     tft.print(">>>>>");
     
-    // Кнопка OK
-    yPos = 200;  // Позиция для OK
+    // --- Кнопка OK (индекс 3) ---
+    yPos = 200;
     
     if (selectedItem == 3) {
         tft.fillRoundRect(40, yPos-5, 160, 30, 6, MENU_SELECT_BG);
@@ -193,7 +197,9 @@ void drawMenuVolume(uint8_t selectedItem, uint8_t volume) {
 void updateMenuVolume(uint8_t volume, uint8_t currentItem) {
     uint8_t oldItem = lastSelectedItem;
     
+    // ========================================================================
     // 1. Если изменилась громкость - обновляем только цифру
+    // ========================================================================
     if (volume != lastVolume) {
         // Стираем старую цифру
         tft.fillRect(70, 80, 100, 60, MENU_BG_COLOR);
@@ -218,10 +224,21 @@ void updateMenuVolume(uint8_t volume, uint8_t currentItem) {
         lastVolume = volume;
     }
     
+    // ========================================================================
     // 2. Если изменился выбранный пункт - обновляем подсветку элементов
+    // ========================================================================
     if (currentItem != oldItem) {
-        // Сбрасываем старый элемент
+        // --------------------------------------------------------------------
+        // Сбрасываем старый элемент (убираем подсветку)
+        // --------------------------------------------------------------------
         switch (oldItem) {
+            case 0: // Был подсвечен заголовок
+                tft.fillRect(20, 20, 200, 30, MENU_BG_COLOR);
+                tft.setTextColor(MENU_TEXT_COLOR, MENU_BG_COLOR);
+                tft.setCursor(50, 27);
+                tft.print("---VOLUME---");
+                break;
+                
             case 1: // Была подсвечена цифра
                 tft.fillRect(70, 80, 100, 60, MENU_BG_COLOR);
                 tft.setTextFont(FONT_BIG);
@@ -250,8 +267,17 @@ void updateMenuVolume(uint8_t volume, uint8_t currentItem) {
                 break;
         }
         
+        // --------------------------------------------------------------------
         // Подсвечиваем новый элемент
+        // --------------------------------------------------------------------
         switch (currentItem) {
+            case 0: // Заголовок
+                tft.fillRoundRect(20, 20, 200, 30, 4, MENU_SELECT_BG);
+                tft.setTextColor(MENU_SELECT_TEXT, MENU_SELECT_BG);
+                tft.setCursor(50, 27);
+                tft.print("---VOLUME---");
+                break;
+                
             case 1: // Цифра
                 tft.fillRoundRect(70, 80, 100, 60, 8, MENU_SELECT_BG);
                 tft.setTextFont(FONT_BIG);
@@ -280,6 +306,7 @@ void updateMenuVolume(uint8_t volume, uint8_t currentItem) {
                 break;
         }
         
+        // Обновляем кэш
         lastSelectedItem = currentItem;
     }
 }

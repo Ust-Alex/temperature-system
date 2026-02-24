@@ -71,6 +71,10 @@ void menu_handle_event(EncoderEvent_t event) {
   // Любое событие сбрасывает таймер неактивности
   lastActivityTime = millis();
 
+  Serial.print("[MENU EVENT] Код = ");
+  Serial.println(event);  // Печатаем ЧИСЛО, а не текст
+
+
   Serial.print("[MENU EVENT] ");
   switch (event) {
     case EVENT_HOLD_LEFT: Serial.println("HOLD_LEFT"); break;
