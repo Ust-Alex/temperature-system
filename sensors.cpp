@@ -1,22 +1,14 @@
 /**
  * ============================================================================
- * ФАЙЛ: sensors.cpp
- * МОДУЛЬ УПРАВЛЕНИЯ ДАТЧИКАМИ ТЕМПЕРАТУРЫ DS18B20
- * 
- * ВЕРСИЯ: 2.0 (ЖЁСТКАЯ ПРИВЯЗКА ДАТЧИКОВ ПО АДРЕСАМ)
+ * @file sensors.cpp
+ * @brief МОДУЛЬ УПРАВЛЕНИЯ ДАТЧИКАМИ DS18B20 (ОПТИМИЗИРОВАНО)
+ * @version 2.1
  * 
  * ОСОБЕННОСТИ:
- * 1. Работа с двумя независимыми шинами 1-Wire (A и B)
- * 2. Фильтрация значений (скользящее среднее по 5 измерениям)
- * 3. Жёсткая привязка датчиков по уникальным адресам
- * 4. Расширенная диагностика при поиске
- * 5. Защита от некорректных значений
- * 
- * ПРИВЯЗКА ДАТЧИКОВ (ПОСТОЯННАЯ):
- * - Индекс 0: СТЕНКА 100см (28 EE 0B 60 46 24 0B FE)
- * - Индекс 1: СТЕНКА 75см  (28 E0 6C 05 47 24 0B 17)
- * - Индекс 2: СТЕНКА 50см  (28 6E E3 41 47 24 0B A4)
- * - Индекс 3: ГИЛЬЗА 25см  (28 02 D3 34 0F 00 00 79)
+ * - Две независимые шины 1-Wire (A и B)
+ * - Фильтр скользящего среднего (5 значений)
+ * - Жёсткая привязка датчиков по адресам
+ * - Автоматическое применение калибровки
  * ============================================================================
  */
 
@@ -26,338 +18,156 @@
 #include "calibration_simple.h"
 
 // ============================================================================
-// ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ МОДУЛЯ
+// ЛОКАЛЬНЫЕ ДАННЫЕ
 // ============================================================================
-static float filterBuffer[4][5];         // Буферы фильтра для каждого датчика (4 датчика × 5 значений)
-static int filterIndex[4] = {0};         // Текущий индекс в кольцевом буфере для каждого датчика
-static float filterSum[4] = {0};         // Сумма значений в буфере (для быстрого расчёта среднего)
+static float filterBuffer[4][5];
+static int filterIndex[4] = {0};
+static float filterSum[4] = {0};
+
+// Адреса датчиков для жёсткой привязки
+static const uint8_t KNOWN_ADDR[4][8] = {
+    { 0x28, 0xEE, 0x0B, 0x60, 0x46, 0x24, 0x0B, 0xFE }, // 0: 100см
+    { 0x28, 0xE0, 0x6C, 0x05, 0x47, 0x24, 0x0B, 0x17 }, // 1: 75см
+    { 0x28, 0x6E, 0xE3, 0x41, 0x47, 0x24, 0x0B, 0xA4 }, // 2: 50см
+    { 0x28, 0x02, 0xD3, 0x34, 0x0F, 0x00, 0x00, 0x79 }  // 3: гильза
+};
+
+static const char* SENSOR_NAMES[4] = {
+    "100см", "75см", "50см", "ГИЛЬЗА"
+};
 
 // ============================================================================
-// ИНИЦИАЛИЗАЦИЯ ФИЛЬТРА
-// Заполняет буферы начальным значением 18.0°C (комнатная температура)
-// Это необходимо, чтобы первые измерения не прыгали от 0 до реальных значений
+// ИНИЦИАЛИЗАЦИЯ
 // ============================================================================
 static void init_filter() {
-  for (int i = 0; i < 4; i++) {
-    // Заполняем весь буфер значением 18.0°C
-    for (int j = 0; j < 5; j++) {
-      filterBuffer[i][j] = 18.0f;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) filterBuffer[i][j] = 18.0f;
+        filterSum[i] = 90.0f;
+        filterIndex[i] = 0;
     }
-    // Сумма для скользящего среднего: 18.0 * 5 = 90.0
-    filterSum[i] = 18.0f * 5;
-    // Индекс начинается с 0 (первый элемент буфера)
-    filterIndex[i] = 0;
-  }
-  Serial.println("[SENSORS] Фильтр инициализирован (18.0°C)");
 }
 
-// ============================================================================
-// ИНИЦИАЛИЗАЦИЯ МОДУЛЯ ДАТЧИКОВ
-// Вызывается один раз при старте системы
-// ============================================================================
 void sensors_init() {
-  Serial.println("[SENSORS] Инициализация модуля датчиков");
-  
-  // Запускаем шины 1-Wire
-  sensorsA.begin();
-  sensorsB.begin();
-  
-  // Устанавливаем разрешение для всех датчиков
-  sensorsA.setResolution(RESOLUTION);
-  sensorsB.setResolution(RESOLUTION);
-  
-  // Инициализируем фильтр комнатной температурой
-  init_filter();
-  
-  // Первоначальный поиск датчиков на шинах
-  sensors_scan_all();
+    sensorsA.begin();
+    sensorsB.begin();
+    sensorsA.setResolution(RESOLUTION);
+    sensorsB.setResolution(RESOLUTION);
+    init_filter();
+    sensors_scan_all();
+    Serial.println("[SENSORS] OK");
 }
 
 // ============================================================================
-// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПЕЧАТИ АДРЕСА
-// ============================================================================
-static void printSensorAddress(uint8_t* addr) {
-  for (int i = 0; i < 8; i++) {
-    Serial.printf("%02X", addr[i]);
-    if (i < 7) Serial.print(":");
-  }
-}
-
-// ============================================================================
-// ПОИСК ДАТЧИКОВ НА ОБЕИХ ШИНАХ С ЖЁСТКОЙ ПРИВЯЗКОЙ ПО АДРЕСАМ
-// Обновляет массив sensors[] и флаги found
-// Каждый датчик получает строго свой индекс независимо от порядка обнаружения
+// ПОИСК ДАТЧИКОВ
 // ============================================================================
 void sensors_scan_all() {
-  Serial.println("\n[SENSORS] ===========================================");
-  Serial.println("[SENSORS] ПОИСК ДАТЧИКОВ С ПРИВЯЗКОЙ ПО АДРЕСАМ");
-  Serial.println("[SENSORS] ===========================================");
-  
-  // Сбрасываем флаги перед новым поиском
-  for (int i = 0; i < 4; i++) {
-    sensors[i].found = false;
-  }
-  
-  // ========================================================================
-  // МАССИВ ИЗВЕСТНЫХ АДРЕСОВ (ЖЁСТКАЯ ПРИВЯЗКА)
-  // Порядок: [0]=100см, [1]=75см, [2]=50см, [3]=гильза
-  // ========================================================================
-  uint8_t knownAddresses[4][8] = {
-    { 0x28, 0xEE, 0x0B, 0x60, 0x46, 0x24, 0x0B, 0xFE }, // СТЕНКА 100см
-    { 0x28, 0xE0, 0x6C, 0x05, 0x47, 0x24, 0x0B, 0x17 }, // СТЕНКА 75см
-    { 0x28, 0x6E, 0xE3, 0x41, 0x47, 0x24, 0x0B, 0xA4 }, // СТЕНКА 50см
-    { 0x28, 0x02, 0xD3, 0x34, 0x0F, 0x00, 0x00, 0x79 }  // ГИЛЬЗА 25см
-  };
-  
-  // Человеческие названия для вывода
-  const char* sensorPositions[4] = {
-    "СТЕНКА 100см",
-    "СТЕНКА 75см",
-    "СТЕНКА 50см",
-    "ГИЛЬЗА 25см"
-  };
-  
-  // ========================================================================
-  // ШАГ 1: ПОИСК НА ШИНЕ A (GPIO4) - ДАТЧИК ГИЛЬЗЫ
-  // ========================================================================
-  Serial.println("\n🔍 ШАГ 1: Поиск на шине A (GPIO4) - ГИЛЬЗА");
-  DeviceAddress addrA;
-  
-  if (sensorsA.getAddress(addrA, 0)) {
-    Serial.print("  Найден датчик с адресом: ");
-    printSensorAddress(addrA);
-    Serial.println();
-    
-    // Сравниваем с известным адресом гильзы
-    if (memcmp(addrA, knownAddresses[3], 8) == 0) {
-      sensors[3].found = true;
-      memcpy(sensors[3].addr, addrA, 8);
-      Serial.println("  ✅ ГИЛЬЗА 25см успешно привязана к индексу 3");
-    } else {
-      Serial.println("  ❌ ОШИБКА: Найден датчик на шине A, но это НЕ ГИЛЬЗА!");
-      Serial.print("     Ожидаемый адрес гильзы: ");
-      printSensorAddress(knownAddresses[3]);
-      Serial.println();
-    }
-  } else {
-    Serial.println("  ❌ Датчик на шине A не найден");
-  }
-  
-  // ========================================================================
-  // ШАГ 2: ПОИСК НА ШИНЕ B (GPIO16) - ДАТЧИКИ СТЕНОК
-  // ========================================================================
-  Serial.println("\n🔍 ШАГ 2: Поиск на шине B (GPIO16) - ДАТЧИКИ СТЕНОК");
-  int deviceCount = sensorsB.getDeviceCount();
-  Serial.printf("  Найдено устройств на шине B: %d\n", deviceCount);
-  
-  // Если количество датчиков не совпадает с ожидаемым (3), предупреждаем
-  if (deviceCount != 3) {
-    Serial.printf("  ⚠️ ВНИМАНИЕ: Ожидалось 3 датчика стенок, найдено %d\n", deviceCount);
-  }
-  
-  // Счётчики для статистики
-  int foundWallSensors = 0;
-  
-  // Перебираем все найденные датчики на шине B
-  for (int i = 0; i < deviceCount; i++) {
-    DeviceAddress addrB;
-    if (sensorsB.getAddress(addrB, i)) {
-      Serial.printf("\n  Датчик #%d, адрес: ", i);
-      printSensorAddress(addrB);
-      Serial.println();
-      
-      // Ищем соответствие среди известных адресов стенок
-      bool matched = false;
-      for (int j = 0; j < 3; j++) {  // j = 0,1,2 для стенок
-        if (memcmp(addrB, knownAddresses[j], 8) == 0) {
-          sensors[j].found = true;
-          memcpy(sensors[j].addr, addrB, 8);
-          Serial.printf("    ✅ Привязан к индексу %d: %s\n", j, sensorPositions[j]);
-          matched = true;
-          foundWallSensors++;
-          break;
+    // Сброс флагов
+    for (int i = 0; i < 4; i++) sensors[i].found = false;
+
+    // Поиск гильзы на шине A
+    DeviceAddress addr;
+    if (sensorsA.getAddress(addr, 0)) {
+        if (memcmp(addr, KNOWN_ADDR[3], 8) == 0) {
+            sensors[3].found = true;
+            memcpy(sensors[3].addr, addr, 8);
         }
-      }
-      
-      if (!matched) {
-        Serial.println("    ❓ НЕИЗВЕСТНЫЙ ДАТЧИК! Не привязан ни к одному индексу.");
-        Serial.println("    Возможно, это новый датчик или замена. Добавьте его адрес в knownAddresses.");
-      }
     }
-  }
-  
-  // ========================================================================
-  // ШАГ 3: ПРОВЕРКА ОТСУТСТВУЮЩИХ ДАТЧИКОВ
-  // ========================================================================
-  Serial.println("\n🔍 ШАГ 3: Проверка отсутствующих датчиков");
-  
-  for (int j = 0; j < 4; j++) {
-    if (!sensors[j].found) {
-      if (j == 3) {
-        Serial.printf("  ❌ КРИТИЧЕСКАЯ ОШИБКА: %s не найден!\n", sensorPositions[j]);
-      } else {
-        Serial.printf("  ⚠️ ВНИМАНИЕ: %s не найден!\n", sensorPositions[j]);
-      }
+
+    // Поиск стенок на шине B
+    int cnt = sensorsB.getDeviceCount();
+    for (int i = 0; i < cnt; i++) {
+        if (!sensorsB.getAddress(addr, i)) continue;
+        for (int j = 0; j < 3; j++) {
+            if (memcmp(addr, KNOWN_ADDR[j], 8) == 0) {
+                sensors[j].found = true;
+                memcpy(sensors[j].addr, addr, 8);
+                break;
+            }
+        }
     }
-  }
-  
-  // ========================================================================
-  // ШАГ 4: ВЫВОД ИТОГОВОЙ ТАБЛИЦЫ
-  // ========================================================================
-  Serial.println("\n📊 ИТОГОВАЯ ТАБЛИЦА СООТВЕТСТВИЯ:");
-  Serial.println("  Индекс | Датчик       | Статус | Адрес");
-  Serial.println("  -------|--------------|--------|------------------");
-  
-  for (int i = 0; i < 4; i++) {
-    Serial.printf("  [%d]    | %-12s | ", i, sensorPositions[i]);
-    if (sensors[i].found) {
-      Serial.print("✅ НАЙДЕН | ");
-      printSensorAddress(sensors[i].addr);
-    } else {
-      Serial.print("❌ ПОТЕРЯН | ");
-    }
-    Serial.println();
-  }
-  
-  // Статистика
-  int foundCount = (sensors[0].found ? 1 : 0) + 
-                   (sensors[1].found ? 1 : 0) + 
-                   (sensors[2].found ? 1 : 0) + 
-                   (sensors[3].found ? 1 : 0);
-  
-  Serial.printf("\n📈 ИТОГО: Найдено %d из 4 датчиков\n", foundCount);
-  
-  if (foundCount == 4) {
-    Serial.println("✅ ВСЕ ДАТЧИКИ НА МЕСТЕ");
-  } else {
-    Serial.println("⚠️ НЕ ВСЕ ДАТЧИКИ НАЙДЕНЫ");
-  }
-  
-  // Если гильза не найдена - критическая ошибка
-  if (!sensors[3].found) {
-    Serial.println("\n🚨 КРИТИЧЕСКАЯ ОШИБКА: Датчик гильзы отсутствует!");
-    Serial.println("   Система не может работать без гильзы!");
-  }
-  
-  Serial.println("[SENSORS] ===========================================\n");
+
+    // Диагностика (краткая)
+    int found = 0;
+    for (int i = 0; i < 4; i++) if (sensors[i].found) found++;
+    Serial.printf("[SENSORS] Найдено %d/4 датчиков\n", found);
+    if (!sensors[3].found) Serial.println("[SENSORS] КРИТИЧНО: Нет гильзы!");
 }
 
 // ============================================================================
-// ЗАПРОС ТЕМПЕРАТУР (АСИНХРОННЫЙ)
-// Запускает преобразование на всех датчиках
+// ОПРОС ДАТЧИКОВ
 // ============================================================================
 void sensors_request_temperatures() {
-  sensorsA.requestTemperatures();
-  sensorsB.requestTemperatures();
+    sensorsA.requestTemperatures();
+    sensorsB.requestTemperatures();
 }
 
-// ============================================================================
-// ЧТЕНИЕ ТЕМПЕРАТУР (ПОСЛЕ ЗАДЕРЖКИ)
-// Считывает результаты преобразования с каждого датчика
-// ============================================================================
 void sensors_read_temperatures() {
-  for (int i = 0; i < 4; i++) {
-    if (sensors[i].found) {
-      float rawTemp;
-      if (i == 3) {  // Гильза на шине A
-        rawTemp = sensorsA.getTempC(sensors[i].addr);
-      } else {        // Стенки на шине B
-        rawTemp = sensorsB.getTempC(sensors[i].addr);
-      }
-      
-      // Проверка валидности полученного значения
-      if (rawTemp == DEVICE_DISCONNECTED_C || rawTemp < -55 || rawTemp > 125) {
-        sensors[i].temp = TEMP_SENSOR_LOST;  // Датчик потерян
-      } else {
-        sensors[i].temp = rawTemp;           // Нормальное значение
-      }
+    for (int i = 0; i < 4; i++) {
+        if (!sensors[i].found) continue;
+        
+        DallasTemperature* bus = (i == 3) ? &sensorsA : &sensorsB;
+        float t = bus->getTempC(sensors[i].addr);
+        
+        if (t == DEVICE_DISCONNECTED_C || t < -55 || t > 125) {
+            sensors[i].temp = TEMP_SENSOR_LOST;
+        } else {
+            sensors[i].temp = t;
+        }
     }
-  }
 }
 
 // ============================================================================
-// ПОЛНЫЙ ЦИКЛ ОБНОВЛЕНИЯ (ЗАПРОС → ЗАДЕРЖКА → ЧТЕНИЕ → ФИЛЬТР → КАЛИБРОВКА)
-// Вызывается из задачи измерений каждый цикл
+// ПОЛНЫЙ ЦИКЛ: ЗАПРОС → ЧТЕНИЕ → ФИЛЬТР → КАЛИБРОВКА
 // ============================================================================
 void sensors_update_all() {
-  // 1. Запускаем преобразование на всех датчиках
-  sensors_request_temperatures();
-  
-  // 2. Ждём завершения конверсии (время зависит от разрешения)
-  delay(CONVERSION_DELAY_MS);
-  
-  // 3. Считываем результаты
-  sensors_read_temperatures();
-  
-  // 4. Применяем фильтр и калибровку к каждому датчику
-  for (int i = 0; i < 4; i++) {
-    // Фильтруем только найденные датчики с валидными показаниями
-    if (sensors[i].found && sensors_is_valid(sensors[i].temp)) {
-      // Удаляем старое значение из суммы
-      filterSum[i] -= filterBuffer[i][filterIndex[i]];
-      
-      // Записываем новое значение в буфер
-      filterBuffer[i][filterIndex[i]] = sensors[i].temp;
-      
-      // Добавляем новое значение в сумму
-      filterSum[i] += sensors[i].temp;
-      
-      // Сдвигаем индекс (кольцевой буфер)
-      filterIndex[i] = (filterIndex[i] + 1) % 5;
-      
-      // Сохраняем отфильтрованное значение (среднее по 5 измерениям)
-      sensors[i].temp = filterSum[i] / 5.0;
-      
-      // Применяем калибровку
-      sensors[i].temp = applyCalibration(i, sensors[i].temp);
+    sensors_request_temperatures();
+    delay(CONVERSION_DELAY_MS);
+    sensors_read_temperatures();
+
+    for (int i = 0; i < 4; i++) {
+        if (!sensors[i].found || !sensors_is_valid(sensors[i].temp)) continue;
+
+        // Фильтр (скользящее среднее)
+        filterSum[i] -= filterBuffer[i][filterIndex[i]];
+        filterBuffer[i][filterIndex[i]] = sensors[i].temp;
+        filterSum[i] += sensors[i].temp;
+        filterIndex[i] = (filterIndex[i] + 1) % 5;
+        
+        // Сохраняем отфильтрованное и калибруем
+        sensors[i].temp = filterSum[i] / 5.0;
+        sensors[i].temp = applyCalibration(i, sensors[i].temp);
     }
-  }
 }
 
 // ============================================================================
-// ДОСТУП К ДАННЫМ ДАТЧИКОВ
+// ДОСТУП К ДАННЫМ
 // ============================================================================
-
-// Возвращает текущую температуру датчика по индексу
 float sensors_get_temp(int idx) {
-  if (idx < 0 || idx >= 4) return TEMP_NO_DATA;
-  return sensors[idx].temp;
+    return (idx >= 0 && idx < 4) ? sensors[idx].temp : TEMP_NO_DATA;
 }
 
-// Проверяет, найден ли датчик
 bool sensors_is_found(int idx) {
-  if (idx < 0 || idx >= 4) return false;
-  return sensors[idx].found;
+    return (idx >= 0 && idx < 4) ? sensors[idx].found : false;
 }
 
-// Возвращает отфильтрованную температуру (с калибровкой)
 float sensors_get_filtered(int idx) {
-  return sensors_get_temp(idx);
+    return sensors_get_temp(idx);
 }
 
 // ============================================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================================================
-
-// Проверяет, является ли значение температуры валидным
 bool sensors_is_valid(float temp) {
-  // Проверка на служебные значения (потеря датчика, ошибка)
-  if (temp <= TEMP_CRITICAL_LOST + 1.0f && temp >= TEMP_CRITICAL_LOST - 1.0f) return false;
-  if (temp <= TEMP_SENSOR_LOST + 1.0f && temp >= TEMP_SENSOR_LOST - 1.0f) return false;
-  if (temp <= TEMP_NO_DATA + 1.0f && temp >= TEMP_NO_DATA - 1.0f) return false;
-  
-  // Проверка физического диапазона DS18B20
-  if (temp < -55.0f || temp > 125.0f) return false;
-  
-  return true;
+    if (temp <= TEMP_CRITICAL_LOST + 1.0f && temp >= TEMP_CRITICAL_LOST - 1.0f) return false;
+    if (temp <= TEMP_SENSOR_LOST + 1.0f && temp >= TEMP_SENSOR_LOST - 1.0f) return false;
+    if (temp <= TEMP_NO_DATA + 1.0f && temp >= TEMP_NO_DATA - 1.0f) return false;
+    return (temp >= -55 && temp <= 125);
 }
 
-// Выводит адрес датчика по его индексу
 void sensors_print_address(int idx) {
-  if (idx < 0 || idx >= 4 || !sensors[idx].found) return;
-  
-  for (int i = 0; i < 8; i++) {
-    Serial.printf("%02X", sensors[idx].addr[i]);
-    if (i < 7) Serial.print(":");
-  }
+    if (idx < 0 || idx >= 4 || !sensors[idx].found) return;
+    for (int i = 0; i < 8; i++) {
+        Serial.printf("%02X", sensors[idx].addr[i]);
+        if (i < 7) Serial.print(":");
+    }
 }
