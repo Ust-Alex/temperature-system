@@ -3,28 +3,23 @@
 
 #include "system_config.h"
 
-// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (extern - объявление)
-extern float calibrationOffsets[4];
-extern int referenceSensor;
-extern bool calibrationEnabled;
+// ============================================================================
+// КАЛИБРОВКА ДАТЧИКОВ (ИНТЕРФЕЙС)
+// Все данные хранятся в eeprom_settings, глобальных переменных больше нет.
+// ============================================================================
 
 void calibration_init();
 
-// Загрузка/сохранение
-void loadOffsetsFromEEPROM();
-void saveOffsetsToEEPROM();
-
 // Калибровка
-void autoCalibrateAllSensors();
-void setManualOffset(int sensorIdx, float offset);
-void setReferenceSensor(int sensorIdx);
-void toggleCalibration(bool enable);
+void autoCalibrateAllSensors();      // Авто по эталону
+void setManualOffset(int idx, float offset); // Ручная установка
+void setReferenceSensor(int idx);    // Смена эталона
+void toggleCalibration(bool enable); // Вкл/Выкл
 
 // Применение
-float applyCalibration(int sensorIdx, float temperature);
-float filterValueWithCalibration(int sensorIdx, float newValue);
+float applyCalibration(int idx, float temp); // Собственно калибровка
 
-// Отображение
+// Статус
 void printCalibrationStatus();
 
 #endif

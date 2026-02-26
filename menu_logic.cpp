@@ -1,15 +1,7 @@
 /**
  * @file menu_logic.cpp
- * @brief ЛОГИКА МЕНЮ (ФИНАЛЬНАЯ ВЕРСИЯ)
- * 
- * @version 2.1
- * @details Обрабатывает события энкодера и управляет состоянием меню.
- *          Все функции отрисовки вынесены в menu_drawing.cpp
- * 
- * @note Поддерживаются события: 
- *          - Поворот (EVENT_ENCODER_LEFT/RIGHT)
- *          - Поворот с удержанием (EVENT_HOLD_LEFT/RIGHT)
- *          - Клик (EVENT_BUTTON_CLICK)
+ * @brief ЛОГИКА МЕНЮ (ПОЛНАЯ ВЕРСИЯ С КАЛИБРОВКОЙ)
+ * @version 2.2
  */
 
 #include "menu_engine.h"
@@ -18,19 +10,15 @@
 #include "mode2_logic.h"
 #include "eeprom_settings.h"
 #include "mp3_player.h"
+#include "calibration_simple.h"
 #include "menu_drawing.h"
 
-// ============================================================================
-// ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ
-// ============================================================================
 static MenuState_t currentState = MENU_STATE_MAIN;
 static uint32_t lastActivityTime = 0;
 static uint8_t selectedItem = 0;
-static uint8_t selectedMode = 0;    // 0 = MODE1, 1 = MODE2
+static uint8_t selectedMode = 0;
 static bool modeConfirmed = false;
 
-// ============================================================================
-// ИНИЦИАЛИЗАЦИЯ
 // ============================================================================
 void menu_init() {
     currentState = MENU_STATE_MAIN;
@@ -38,14 +26,10 @@ void menu_init() {
     selectedMode = sysData.mode;
     modeConfirmed = false;
     lastActivityTime = millis();
-
     drawing_reset_cache();
-    Serial.println("[MENU LOGIC] Модуль инициализирован");
+    Serial.println("[MENU] Init");
 }
 
-// ============================================================================
-// ПОЛУЧЕНИЕ СОСТОЯНИЯ
-// ============================================================================
 bool menu_is_active() {
     return currentState != MENU_STATE_MAIN;
 }
@@ -54,100 +38,80 @@ MenuState_t menu_get_current_state() {
     return currentState;
 }
 
-// ============================================================================
-// ПРОВЕРКА ТАЙМАУТА
-// ============================================================================
 void menu_check_timeout() {
     if (currentState != MENU_STATE_MAIN) {
         uint32_t now = millis();
         if (now - lastActivityTime > MENU_INACTIVITY_TIMEOUT) {
             currentState = MENU_STATE_MAIN;
             forceDisplayRedraw = true;
-            Serial.println("[MENU LOGIC] Таймаут - возврат в MAIN");
         }
     }
 }
 
 // ============================================================================
-// ОБРАБОТКА СОБЫТИЙ ЭНКОДЕРА
-// ============================================================================
 void menu_handle_event(EncoderEvent_t event) {
-    // Любое событие сбрасывает таймер неактивности
     lastActivityTime = millis();
-
-    // Отладка (можно закомментировать после отладки)
-    // printEventDebug(event);
 
     switch (currentState) {
 
-        // --------------------------------------------------------------------
-        // ГЛАВНЫЙ ЭКРАН
         // --------------------------------------------------------------------
         case MENU_STATE_MAIN:
             if (event == EVENT_BUTTON_CLICK) {
                 currentState = MENU_STATE_TOP;
                 selectedItem = 0;
                 drawMenuTop(selectedItem);
-                Serial.println("[MENU LOGIC] Переход в TOP");
             }
             break;
 
         // --------------------------------------------------------------------
-        // ВЕРХНЕЕ МЕНЮ (MODE, VOLUME, CALIB, SETTINGS)
-        // --------------------------------------------------------------------
         case MENU_STATE_TOP:
             if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
-                uint8_t oldItem = selectedItem;
+                uint8_t old = selectedItem;
                 if (event == EVENT_ENCODER_RIGHT) {
                     selectedItem = (selectedItem + 1) % 4;
                 } else {
                     selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
                 }
-                updateMenuTopSelection(oldItem, selectedItem);
-            } 
+                updateMenuTopSelection(old, selectedItem);
+            }
             else if (event == EVENT_BUTTON_CLICK) {
                 switch (selectedItem) {
-                    case 0:  // MODE
+                    case 0:
                         currentState = MENU_STATE_MODE_SELECT;
                         selectedItem = (sysData.mode == 0) ? 2 : 1;
                         selectedMode = sysData.mode;
                         modeConfirmed = false;
                         drawMenuMode(selectedItem, selectedMode, modeConfirmed);
-                        Serial.println("[MENU LOGIC] Переход в MODE");
                         break;
-
-                    case 1:  // VOLUME
+                    case 1:
                         currentState = MENU_STATE_MP3_VOL;
-                        selectedItem = 1;  // Курсор на цифре
+                        selectedItem = 1;
                         drawing_reset_volume_cache();
                         drawMenuVolume(selectedItem, settings_get_mp3_volume());
-                        Serial.println("[MENU LOGIC] Переход в VOLUME");
+                        break;
+                    case 2:
+                        currentState = MENU_STATE_CALIB;
+                        selectedItem = 0;
+                        drawMenuCalib(selectedItem);
                         break;
                 }
             }
             break;
 
         // --------------------------------------------------------------------
-        // ЭКРАН ВЫБОРА РЕЖИМА (MODE SELECT)
-        // --------------------------------------------------------------------
         case MENU_STATE_MODE_SELECT:
             if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
-                // Навигация с пропуском недоступных пунктов
                 uint8_t newItem = selectedItem;
-                
-                // Шаг 1: двигаемся в нужном направлении
                 if (event == EVENT_ENCODER_RIGHT) {
                     newItem = (selectedItem + 1) % 4;
                 } else {
                     newItem = (selectedItem == 0) ? 3 : selectedItem - 1;
                 }
 
-                // Шаг 2: проверяем доступность
                 bool available = true;
-                if (sysData.mode == 0 && newItem == 1) available = false;  // MODE1 недоступен в синем режиме
-                if (sysData.mode == 1 && newItem == 2) available = false;  // MODE2 недоступен в зелёном режиме
+                if (sysData.mode == 0 && newItem == 1) available = false;
+                if (sysData.mode == 1 && newItem == 2) available = false;
 
-                // Шаг 3: если недоступен, делаем ещё шаг
                 if (!available) {
                     uint8_t secondItem;
                     if (event == EVENT_ENCODER_RIGHT) {
@@ -155,15 +119,13 @@ void menu_handle_event(EncoderEvent_t event) {
                     } else {
                         secondItem = (newItem == 0) ? 3 : newItem - 1;
                     }
-
                     bool secondAvailable = true;
                     if (sysData.mode == 0 && secondItem == 1) secondAvailable = false;
                     if (sysData.mode == 1 && secondItem == 2) secondAvailable = false;
-
                     if (secondAvailable) {
                         newItem = secondItem;
                     } else {
-                        newItem = selectedItem;  // Остаёмся на месте
+                        newItem = selectedItem;
                     }
                 }
 
@@ -171,28 +133,20 @@ void menu_handle_event(EncoderEvent_t event) {
                     selectedItem = newItem;
                     updateMenuModeSelection(selectedItem, selectedMode, modeConfirmed);
                 }
-            } 
+            }
             else if (event == EVENT_BUTTON_CLICK) {
                 if (selectedItem == 0) {
-                    // Возврат в TOP по заголовку
                     currentState = MENU_STATE_TOP;
                     selectedItem = 0;
                     drawMenuTop(0);
-                    Serial.println("[MENU LOGIC] Возврат в TOP");
-                } 
-                else if (selectedItem == 1 || selectedItem == 2) {
-                    // Выбор режима
+                } else if (selectedItem == 1 || selectedItem == 2) {
                     uint8_t newMode = (selectedItem == 1) ? 0 : 1;
                     if (newMode != sysData.mode) {
                         selectedMode = newMode;
                         modeConfirmed = true;
                         updateMenuModeSelection(selectedItem, selectedMode, modeConfirmed);
-                        Serial.printf("[MENU LOGIC] Выбран режим %d\n", selectedMode);
                     }
-                } 
-                else if (selectedItem == 3 && modeConfirmed) {
-                    // OK - подтверждение
-                    Serial.printf("[MENU LOGIC] OK: переход в режим %d\n", selectedMode);
+                } else if (selectedItem == 3 && modeConfirmed) {
                     resetDisplayState(selectedMode);
                     currentState = MENU_STATE_MAIN;
                     modeConfirmed = false;
@@ -202,10 +156,7 @@ void menu_handle_event(EncoderEvent_t event) {
             break;
 
         // --------------------------------------------------------------------
-        // ЭКРАН РЕГУЛИРОВКИ ГРОМКОСТИ (VOLUME)
-        // --------------------------------------------------------------------
         case MENU_STATE_MP3_VOL:
-            // Удержание + поворот меняет громкость
             if (event == EVENT_HOLD_LEFT || event == EVENT_HOLD_RIGHT) {
                 int dir = (event == EVENT_HOLD_RIGHT) ? 1 : -1;
                 uint8_t vol = settings_get_mp3_volume() + dir;
@@ -213,67 +164,83 @@ void menu_handle_event(EncoderEvent_t event) {
                     settings_set_mp3_volume(vol);
                     updateMenuVolume(vol, selectedItem);
                 }
-            } 
-            // Обычный поворот переключает пункты меню
+            }
             else if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
-                uint8_t oldItem = selectedItem;
+                uint8_t old = selectedItem;
                 if (event == EVENT_ENCODER_RIGHT) {
                     selectedItem = (selectedItem + 1) % 4;
                 } else {
                     selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
                 }
                 updateMenuVolume(settings_get_mp3_volume(), selectedItem);
-            } 
-            // Обработка кликов по пунктам
+            }
             else if (event == EVENT_BUTTON_CLICK) {
                 switch (selectedItem) {
-                    case 0:  // Заголовок "---VOLUME---" - возврат
-                    case 3:  // Кнопка "ok" - возврат
+                    case 0:
+                    case 3:
                         currentState = MENU_STATE_TOP;
                         selectedItem = 1;
                         drawMenuTop(1);
-                        if (selectedItem == 0) {
-                            Serial.println("[MENU LOGIC] Возврат в TOP (заголовок)");
-                        } else {
-                            Serial.println("[MENU LOGIC] Возврат в TOP (OK)");
-                        }
                         break;
-
-                    case 2:  // Кнопка ">>>>>" - тестовый звук
-                        {
-                            Mp3Command_t play = { MP3_CMD_PLAY_TRACK, 1 };
-                            sendMP3Command(play);
-                            Serial.println("[MENU LOGIC] Тестовый звук");
-                        }
+                    case 2:
+                        Mp3Command_t play = { MP3_CMD_PLAY_TRACK, 1 };
+                        sendMP3Command(play);
                         break;
-                    // case 1 (цифра) - ничего не делаем по нажатию
                 }
             }
             break;
 
         // --------------------------------------------------------------------
-        // НЕРЕАЛИЗОВАННЫЕ СОСТОЯНИЯ
+        case MENU_STATE_CALIB:
+            if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                uint8_t old = selectedItem;
+                if (event == EVENT_ENCODER_RIGHT) {
+                    selectedItem = (selectedItem + 1) % 4;
+                } else {
+                    selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
+                }
+                updateMenuCalibSelection(old, selectedItem);
+            }
+            else if (event == EVENT_BUTTON_CLICK) {
+                switch (selectedItem) {
+                    case 0: // STATUS
+                        currentState = MENU_STATE_CALIB_STATUS;
+                        drawCalibStatus();
+                        break;
+                    case 1: // RESET
+                        for (int i = 0; i < 4; i++) {
+                            settings_set_offset(i, 0.0f);
+                        }
+                        settings_save();
+                        showMessage("Offsets reset", 1000);
+                        currentState = MENU_STATE_CALIB;
+                        drawMenuCalib(selectedItem);
+                        break;
+                    case 2: // AUTO
+                        autoCalibrateAllSensors();
+                        showMessage("Auto done", 1000);
+                        currentState = MENU_STATE_CALIB;
+                        drawMenuCalib(selectedItem);
+                        break;
+                    case 3: // BACK
+                        currentState = MENU_STATE_TOP;
+                        selectedItem = 2;
+                        drawMenuTop(2);
+                        break;
+                }
+            }
+            break;
+
         // --------------------------------------------------------------------
+        case MENU_STATE_CALIB_STATUS:
+            if (event == EVENT_BUTTON_CLICK || event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                currentState = MENU_STATE_CALIB;
+                selectedItem = 0;
+                drawMenuCalib(selectedItem);
+            }
+            break;
+
         default:
             break;
     }
 }
-
-// ============================================================================
-// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОТЛАДКИ (опционально)
-// ============================================================================
-/*
-static void printEventDebug(EncoderEvent_t event) {
-    Serial.print("[MENU EVENT] Код = ");
-    Serial.print(event);
-    Serial.print(" -> ");
-    switch(event) {
-        case EVENT_HOLD_LEFT: Serial.println("HOLD_LEFT"); break;
-        case EVENT_HOLD_RIGHT: Serial.println("HOLD_RIGHT"); break;
-        case EVENT_ENCODER_LEFT: Serial.println("LEFT"); break;
-        case EVENT_ENCODER_RIGHT: Serial.println("RIGHT"); break;
-        case EVENT_BUTTON_CLICK: Serial.println("CLICK"); break;
-        default: Serial.println("OTHER"); break;
-    }
-}
-*/
