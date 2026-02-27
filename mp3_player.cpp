@@ -1,19 +1,21 @@
 /**
  * ============================================================================
- * ФАЙЛ: mp3_player.cpp
- * МОДУЛЬ УПРАВЛЕНИЯ DFPLAYER MINI (MP3-ПРОИГРЫВАТЕЛЕМ)
+ * @file mp3_player.cpp
+ * @brief МОДУЛЬ УПРАВЛЕНИЯ DFPLAYER MINI (MP3-ПРОИГРЫВАТЕЛЕМ)
  * 
- * ВЕРСИЯ: 2.2 (ОЧИЩЕННАЯ, С ПОДДЕРЖКОЙ НОВЫХ ТРЕКОВ)
+ * @version 2.3 (ИСПРАВЛЕНО: громкость при старте читается из EEPROM)
  * 
  * ОСОБЕННОСТИ:
  * 1. Задача FreeRTOS для асинхронного управления
  * 2. Очередь команд для межзадачного взаимодействия
  * 3. Поддержка повторяющихся сигналов
  * 4. Полный набор команд для всех событий системы
+ * 5. Громкость при инициализации берётся из settings (EEPROM)
  * ============================================================================
  */
 
 #include "mp3_player.h"
+#include "eeprom_settings.h"  // добавлено для доступа к настройкам
 
 extern HardwareSerial dfplayerSerial;
 extern DFRobotDFPlayerMini myDFPlayer;
@@ -62,7 +64,16 @@ bool initMP3Player() {
   }
   
   myDFPlayer.setTimeOut(500);
-  myDFPlayer.volume(15);
+  
+  // ========================================================================
+  // ИСПРАВЛЕНО: читаем громкость из настроек вместо хардкода 15
+  // ========================================================================
+  uint8_t startupVol = settings_get_mp3_volume();
+  myDFPlayer.volume(startupVol);
+  if (mp3DebugOutput) {
+    Serial.printf("[MP3] Громкость при старте: %d (из EEPROM)\n", startupVol);
+  }
+  
   myDFPlayer.EQ(DFPLAYER_EQ_NORMAL);
   myDFPlayer.outputDevice(DFPLAYER_DEVICE_SD);
   
@@ -123,6 +134,9 @@ void taskMP3(void* pvParameters) {
         case MP3_CMD_SET_VOLUME:
           if (command.param > 30) command.param = 30;
           myDFPlayer.volume(command.param);
+          if (mp3DebugOutput) {
+            Serial.printf("[MP3] Громкость установлена: %d\n", command.param);
+          }
           break;
           
         case MP3_CMD_STOP:
