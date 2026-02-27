@@ -409,26 +409,21 @@ void drawCalibStatus() {
 
         float raw = sensors[i].temp;
         float offset = settings_get_offset(i);
-        Serial.print(i);
-        Serial.print(" ");
-        Serial.print(settings_get_offset(i));
-        Serial.print(" ");
-        Serial.println(offset);
-        
+       
         float cal = raw + offset;
 
         char line[30];
         // Вместо + ставим ~, минус оставляем как есть (он должен рисоваться)
         
         if (offset > 0) {
-            snprintf(line, sizeof(line), "%d %05.2f->%05.2f ~%.2f",
-                     i, raw, cal, offset);
+            snprintf(line, sizeof(line), "%d %05.2f->%05.2f +%.2f",
+                     i, raw, cal, abs(offset));
         } else {
-            snprintf(line, sizeof(line), "%d %05.2f->%05.2f %.2f",
-                     i, raw, cal, offset);  // отрицательные сами с минусом
+            snprintf(line, sizeof(line), "%d %05.2f->%05.2f -%.2f",
+                     i, raw, cal, abs(offset));  // отрицательные сами с минусом
         }
 
-        tft.setCursor(10, y);
+        tft.setCursor(3, y);
         tft.print(line);
         y += 25;
     }
