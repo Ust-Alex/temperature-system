@@ -1,7 +1,7 @@
 /**
  * @file menu_logic.cpp
- * @brief ЛОГИКА МЕНЮ (ПОЛНАЯ ВЕРСИЯ С КАЛИБРОВКОЙ)
- * @version 2.2
+ * @brief ЛОГИКА МЕНЮ (С ДОБАВЛЕННЫМ BACK)
+ * @version 2.3
  */
 
 #include "menu_engine.h"
@@ -68,31 +68,38 @@ void menu_handle_event(EncoderEvent_t event) {
             if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
                 uint8_t old = selectedItem;
                 if (event == EVENT_ENCODER_RIGHT) {
-                    selectedItem = (selectedItem + 1) % 4;
+                    selectedItem = (selectedItem + 1) % 5;  // ТЕПЕРЬ 5 ПУНКТОВ
                 } else {
-                    selectedItem = (selectedItem == 0) ? 3 : selectedItem - 1;
+                    selectedItem = (selectedItem == 0) ? 4 : selectedItem - 1;
                 }
                 updateMenuTopSelection(old, selectedItem);
             }
             else if (event == EVENT_BUTTON_CLICK) {
                 switch (selectedItem) {
-                    case 0:
+                    case 0: // MODE
                         currentState = MENU_STATE_MODE_SELECT;
                         selectedItem = (sysData.mode == 0) ? 2 : 1;
                         selectedMode = sysData.mode;
                         modeConfirmed = false;
                         drawMenuMode(selectedItem, selectedMode, modeConfirmed);
                         break;
-                    case 1:
+                    case 1: // VOLUME
                         currentState = MENU_STATE_MP3_VOL;
                         selectedItem = 1;
                         drawing_reset_volume_cache();
                         drawMenuVolume(selectedItem, settings_get_mp3_volume());
                         break;
-                    case 2:
+                    case 2: // CALIB
                         currentState = MENU_STATE_CALIB;
                         selectedItem = 0;
                         drawMenuCalib(selectedItem);
+                        break;
+                    case 3: // SETTINGS (заглушка)
+                        // TODO: добавить позже
+                        break;
+                    case 4: // BACK - возврат на главный экран
+                        currentState = MENU_STATE_MAIN;
+                        forceDisplayRedraw = true;
                         break;
                 }
             }

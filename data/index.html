@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Термометр</title>
+    <!-- Chart.js для графиков -->
+    <script src="chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .sensor-card {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+        }
+        .sensor-name {
+            font-size: 14px;
+            color: #888;
+        }
+        .sensor-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .guild { color: #ff4444; }
+        .wall { color: #44ff44; }
+        .chart-container {
+            height: 250px;
+            margin-bottom: 20px;
+        }
+        .mode-indicator {
+            text-align: center;
+            padding: 8px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .mode0 { background: #0066cc; }
+        .mode1-green { background: #00aa00; }
+        .mode1-yellow { background: #cccc00; color: #000; }
+        .mode1-red { background: #cc0000; }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 5px;
+            background: #2a2a2a;
+            border-radius: 8px;
+        }
+        button {
+            background: #4a4a4a;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button.active {
+            background: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <div id="modeIndicator" class="mode-indicator mode0">MODE 1 (СТАБИЛИЗАЦИЯ)</div>
+    
+    <div class="status-bar">
+        <span>Клиентов: <span id="clientCount">0</span></span>
+        <span>⚡ <span id="connectionStatus">Подключение...</span></span>
+    </div>
+
+    <div class="sensor-grid">
+        <div class="sensor-card">
+            <div class="sensor-name">ГИЛЬЗА</div>
+            <div id="guildValue" class="sensor-value guild">--.--</div>
+        </div>
+        <div class="sensor-card">
+            <div class="sensor-name">СТЕНКА 100</div>
+            <div id="wall100Value" class="sensor-value wall">--.--</div>
+        </div>
+        <div class="sensor-card">
+            <div class="sensor-name">СТЕНКА 75</div>
+            <div id="wall75Value" class="sensor-value wall">--.--</div>
+        </div>
+        <div class="sensor-card">
+            <div class="sensor-name">СТЕНКА 50</div>
+            <div id="wall50Value" class="sensor-value wall">--.--</div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <button id="range1h" class="active">1 час</button>
+        <button id="range30m">30 мин</button>
+        <button id="range15m">15 мин</button>
+        <button id="range5m">5 мин</button>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="tempChart"></canvas>
+    </div>
+
+    <script>
+        // Конфигурация
+        const MAX_POINTS = 3600; // 1 час при 1 измерении в секунду
+        const WS_URL = 'ws://192.168.4.1:8080';
+        
+        // Хранилище данных
+        let timeLabels = [];
+        let guildData = [];
+        let wall100Data = [];
+        let wall75Data = [];
+        let wall50Data = [];
+        
+        // WebSocket
+        let socket;
+        let reconnectTimer;
+        let clientCount = 0;
+        
+        // График
+        let chart;
+        let currentRange = '1h'; // 1h, 30m, 15m, 5m
+        
+        // Инициализация графика
+        function initChart() {
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [
+                        { label: 'Гильза', data: guildData, borderColor: '#ff4444', tension: 0.1, pointRadius: 0 },
+                        { label: 'Стенка 100', data: wall100Data, borderColor: '#44ff44', tension: 0.1, pointRadius: 0 },
+                        { label: 'Стенка 75', data: wall75Data, borderColor: '#44ff44', tension: 0.1, pointRadius: 0 },
+                        { label: 'Стенка 50', data: wall50Data, borderColor: '#44ff44', tension: 0.1, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 },
+                    scales: {
+                        y: { 
+                            title: { display: true, text: '°C' },
+                            min: 20,
+                            max: 90
+                        },
+                        x: { 
+                            display: true,
+                            ticks: { maxTicksLimit: 5 }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+        
+        // Обновление диапазона отображения
+        function updateRange() {
+            if (!chart) return;
+            
+            let pointsToShow = 3600; // 1 час
+            if (currentRange === '30m') pointsToShow = 1800;
+            else if (currentRange === '15m') pointsToShow = 900;
+            else if (currentRange === '5m') pointsToShow = 300;
+            
+            const start = Math.max(0, timeLabels.length - pointsToShow);
+            chart.data.labels = timeLabels.slice(start);
+            chart.data.datasets[0].data = guildData.slice(start);
+            chart.data.datasets[1].data = wall100Data.slice(start);
+            chart.data.datasets[2].data = wall75Data.slice(start);
+            chart.data.datasets[3].data = wall50Data.slice(start);
+            chart.update();
+        }
+        
+        // Обработка полученных данных
+        function processData(data) {
+            // Обновляем цифры
+            document.getElementById('guildValue').textContent = data.guild.toFixed(2);
+            document.getElementById('wall100Value').textContent = data.wall100.toFixed(2);
+            document.getElementById('wall75Value').textContent = data.wall75.toFixed(2);
+            document.getElementById('wall50Value').textContent = data.wall50.toFixed(2);
+            
+            // Обновляем индикатор режима
+            const modeEl = document.getElementById('modeIndicator');
+            if (data.mode === 0) {
+                modeEl.className = 'mode-indicator mode0';
+                modeEl.textContent = 'MODE 1 (СТАБИЛИЗАЦИЯ)';
+            } else {
+                let colorClass = 'mode1-green';
+                let colorText = 'ЗЕЛЁНЫЙ';
+                if (data.color === 1) { colorClass = 'mode1-yellow'; colorText = 'ЖЁЛТЫЙ'; }
+                else if (data.color === 2) { colorClass = 'mode1-red'; colorText = 'КРАСНЫЙ'; }
+                modeEl.className = `mode-indicator ${colorClass}`;
+                modeEl.textContent = `MODE 2 (${colorText})`;
+            }
+            
+            // Добавляем время
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2,'0') + ':' + 
+                           now.getMinutes().toString().padStart(2,'0') + ':' + 
+                           now.getSeconds().toString().padStart(2,'0');
+            
+            // Добавляем данные в массивы
+            timeLabels.push(timeStr);
+            guildData.push(data.guild);
+            wall100Data.push(data.wall100);
+            wall75Data.push(data.wall75);
+            wall50Data.push(data.wall50);
+            
+            // Ограничиваем длину
+            if (timeLabels.length > MAX_POINTS) {
+                timeLabels.shift();
+                guildData.shift();
+                wall100Data.shift();
+                wall75Data.shift();
+                wall50Data.shift();
+            }
+            
+            updateRange();
+        }
+        
+        // Подключение к WebSocket
+        function connectWebSocket() {
+            document.getElementById('connectionStatus').textContent = 'Подключение...';
+            
+            socket = new WebSocket(WS_URL);
+            
+            socket.onopen = function() {
+                document.getElementById('connectionStatus').textContent = '🟢 Online';
+                if (reconnectTimer) clearInterval(reconnectTimer);
+            };
+            
+            socket.onclose = function() {
+                document.getElementById('connectionStatus').textContent = '🔴 Offline';
+                reconnectTimer = setInterval(connectWebSocket, 3000);
+            };
+            
+            socket.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    processData(data);
+                } catch(e) {
+                    console.log('Ошибка парсинга:', e);
+                }
+            };
+        }
+        
+        // Запуск при загрузке
+        window.onload = function() {
+            initChart();
+            connectWebSocket();
+            
+            // Кнопки диапазона
+            document.getElementById('range1h').onclick = function() {
+                currentRange = '1h';
+                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                updateRange();
+            };
+            document.getElementById('range30m').onclick = function() {
+                currentRange = '30m';
+                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                updateRange();
+            };
+            document.getElementById('range15m').onclick = function() {
+                currentRange = '15m';
+                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                updateRange();
+            };
+            document.getElementById('range5m').onclick = function() {
+                currentRange = '5m';
+                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                updateRange();
+            };
+        };
+    </script>
+</body>
+</html>
