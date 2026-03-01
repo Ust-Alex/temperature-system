@@ -238,12 +238,12 @@
             <div class="temp-card" id="card1" style="color: #FFFF00;">--.--</div> <!-- 50см -->
             <div class="temp-card" id="card0" style="color: #00FF00;">--.--</div> <!-- гильза -->
             
-            <!-- КНОПКИ МАСШТАБА (ТЕПЕРЬ 5 ШТУК) -->
-            <button class="scale-btn active" id="btn1h">1ч</button>
+            <!-- КНОПКИ МАСШТАБА (5 ШТУК) -->
+            <button class="scale-btn" id="btn1h">1ч</button>
             <button class="scale-btn" id="btn30m">30м</button>
             <button class="scale-btn" id="btn15m">15м</button>
             <button class="scale-btn" id="btn5m">5м</button>
-            <button class="scale-btn" id="btn1m">1м</button>  <!-- НОВАЯ КНОПКА -->
+            <button class="scale-btn active" id="btn1m">1м</button>  <!-- active теперь здесь -->
             
             <!-- Нижний блок (от/до и ONLINE) -->
             <div class="panel-bottom">
@@ -271,8 +271,8 @@
     <!-- ОТЛАДОЧНАЯ СТРОКА ПОД ГРАФИКОМ -->
     <div class="debug-bar" id="debugBar">
         <span>Буфер: <span class="debug-value" id="debugBuffer">0/7200</span></span>
-        <span>Диапазон: <span class="debug-value" id="debugRange">7200</span></span>
-        <span>Активна: <span class="debug-value" id="debugActive">1ч</span></span>
+        <span>Диапазон: <span class="debug-value" id="debugRange">120</span></span>
+        <span>Активна: <span class="debug-value" id="debugActive">1м</span></span>
         <span>Точка: <span class="debug-value" id="debugLastTime">--:--:--</span></span>
     </div>
 </div>
@@ -285,7 +285,6 @@
     const WS_URL = 'ws://192.168.4.1:8080';
     const CHART_UPDATE_INTERVAL = 500;
     
-    // СООТВЕТСТВИЕ КНОПОК И КОЛИЧЕСТВА ТОЧЕК (с новой 1м)
     const RANGE_MAP = {
         '1ч': 7200,
         '30м': 3600,
@@ -294,7 +293,6 @@
         '1м': 120
     };
     
-    // ОБРАТНОЕ СООТВЕТСТВИЕ ДЛЯ ОТЛАДКИ
     const RANGE_TO_BUTTON = {
         7200: '1ч',
         3600: '30м',
@@ -303,17 +301,66 @@
         120: '1м'
     };
     
-    // WebSocket
+    // ============================================
+    // 2. ЗВУКИ
+    // ============================================
+    const soundTormazi = new Audio('/tormazi.wav');
+    const soundZhdati = new Audio('/zhdati.wav');
+    
+    let soundInterval = null;
+    let yellowCycleState = false;
+    let lastColor = -1;
+    
+    function playSound(sound) {
+        if (!sound) return;
+        sound.currentTime = 0;
+        sound.play().catch(e => console.log('Звук не удался (нужно взаимодействие)', e));
+    }
+    
+    function stopAllSounds() {
+        if (soundInterval) {
+            clearInterval(soundInterval);
+            soundInterval = null;
+        }
+        yellowCycleState = false;
+        console.log('[ЗВУК] Все циклы остановлены');
+    }
+    
+    function startYellowCycle() {
+        stopAllSounds();
+        console.log('[ЗВУК] Запуск жёлтого цикла (60 сек, чередование)');
+        yellowCycleState = false;
+        
+        soundInterval = setInterval(() => {
+            if (yellowCycleState) {
+                playSound(soundTormazi);
+                console.log('[ЗВУК] Жёлтый цикл: tormazi');
+            } else {
+                playSound(soundZhdati);
+                console.log('[ЗВУК] Жёлтый цикл: zhdati');
+            }
+            yellowCycleState = !yellowCycleState;
+        }, 60000);
+    }
+    
+    function startRedCycle() {
+        stopAllSounds();
+        console.log('[ЗВУК] Запуск красного цикла (30 сек, tormazi)');
+        
+        soundInterval = setInterval(() => {
+            playSound(soundTormazi);
+            console.log('[ЗВУК] Красный цикл: tormazi');
+        }, 30000);
+    }
+    
+    // ============================================
+    // 3. ОСТАЛЬНЫЕ НАСТРОЙКИ
+    // ============================================
     let socket;
     let reconnectTimer;
-    
-    // График
     let chart;
-    let currentRange = 7200; // по умолчанию 1ч
+    let currentRange = 120;  // ИЗМЕНЕНО: теперь 1 минута (было 7200)
     
-    // ============================================
-    // 2. КОЛЬЦЕВОЙ БУФЕР
-    // ============================================
     const dataBuffer = {
         time: new Array(MAX_POINTS).fill(''),
         guild: new Array(MAX_POINTS).fill(null),
@@ -326,9 +373,6 @@
         lastTime: ''
     };
     
-    // ============================================
-    // 3. КЭШ ПРЕДЫДУЩИХ ЗНАЧЕНИЙ
-    // ============================================
     const lastValues = {
         mode: -1,
         color: -1,
@@ -337,14 +381,11 @@
         temps: [null, null, null, null]
     };
     
-    // ============================================
-    // 4. ТРОТТЛИНГ
-    // ============================================
     let chartUpdateTimer = null;
     let pendingChartUpdate = false;
     
     // ============================================
-    // 5. ИНИЦИАЛИЗАЦИЯ ГРАФИКА
+    // 4. ИНИЦИАЛИЗАЦИЯ ГРАФИКА
     // ============================================
     const ctx = document.getElementById('tempChart').getContext('2d');
     chart = new Chart(ctx, {
@@ -352,34 +393,10 @@
         data: {
             labels: [],
             datasets: [
-                { 
-                    label: 'Гильза', 
-                    data: [], 
-                    borderColor: '#00FF00', 
-                    tension: 0.1, 
-                    pointRadius: 0 
-                },
-                { 
-                    label: '50см', 
-                    data: [], 
-                    borderColor: '#FFFF00', 
-                    tension: 0.1, 
-                    pointRadius: 0 
-                },
-                { 
-                    label: '75см', 
-                    data: [], 
-                    borderColor: '#00FFFF', 
-                    tension: 0.1, 
-                    pointRadius: 0 
-                },
-                { 
-                    label: '100см', 
-                    data: [], 
-                    borderColor: '#FFA500', 
-                    tension: 0.1, 
-                    pointRadius: 0 
-                },
+                { label: 'Гильза', data: [], borderColor: '#00FF00', tension: 0.1, pointRadius: 0 },
+                { label: '50см', data: [], borderColor: '#FFFF00', tension: 0.1, pointRadius: 0 },
+                { label: '75см', data: [], borderColor: '#00FFFF', tension: 0.1, pointRadius: 0 },
+                { label: '100см', data: [], borderColor: '#FFA500', tension: 0.1, pointRadius: 0 },
                 { 
                     label: 'База', 
                     data: [], 
@@ -422,7 +439,7 @@
     });
 
     // ============================================
-    // 6. ОБНОВЛЕНИЕ ОТЛАДОЧНОЙ СТРОКИ
+    // 5. ОБНОВЛЕНИЕ ОТЛАДКИ
     // ============================================
     function updateDebugInfo() {
         document.getElementById('debugBuffer').textContent = `${dataBuffer.count}/${MAX_POINTS}`;
@@ -435,7 +452,7 @@
     }
 
     // ============================================
-    // 7. ОБНОВЛЕНИЕ ГРАФИКА
+    // 6. ОБНОВЛЕНИЕ ГРАФИКА
     // ============================================
     function scheduleChartUpdate() {
         if (pendingChartUpdate) return;
@@ -455,8 +472,6 @@
     function performChartUpdate() {
         const start = Math.max(0, dataBuffer.count - currentRange);
         const end = dataBuffer.count;
-        
-        console.log(`[ГРАФИК] Обновление: диапазон=${currentRange}, точек в буфере=${dataBuffer.count}, показываем=${end-start}`);
         
         const labels = [];
         const guild = [];
@@ -494,7 +509,7 @@
     }
 
     // ============================================
-    // 8. ОБНОВЛЕНИЕ КАРТОЧЕК
+    // 7. ОБНОВЛЕНИЕ КАРТОЧЕК
     // ============================================
     function updateCardIfChanged(cardId, newValue, index) {
         const card = document.getElementById(cardId);
@@ -510,7 +525,7 @@
     }
 
     // ============================================
-    // 9. ОБНОВЛЕНИЕ ВЕРХНЕЙ ПЛАШКИ
+    // 8. ОБНОВЛЕНИЕ ВЕРХНЕЙ ПЛАШКИ И ЗВУКОВ
     // ============================================
     function updateModeDisplay(mode, color, timeStr, baseTemp) {
         const modeDisplay = document.getElementById('modeDisplay');
@@ -523,6 +538,26 @@
             return;
         }
         
+        // ЗВУКИ при смене цвета
+        if (color !== lastValues.color) {
+            console.log(`[ЗВУК] Смена цвета: ${lastValues.color} -> ${color}`);
+            
+            if (color === 1 || color === 2) {
+                playSound(soundTormazi);
+            }
+            
+            if (color === 1) {
+                startYellowCycle();
+            } 
+            else if (color === 2) {
+                startRedCycle();
+            } 
+            else if (color === 0) {
+                stopAllSounds();
+            }
+        }
+        
+        // Обновление текста
         let newText = '';
         let newClass = '';
         
@@ -554,7 +589,7 @@
     }
 
     // ============================================
-    // 10. СТАТУС
+    // 9. СТАТУС
     // ============================================
     function setPanelStatus(online) {
         const dot = document.getElementById('panelStatusDot');
@@ -572,7 +607,7 @@
     }
 
     // ============================================
-    // 11. ОБРАБОТКА ДАННЫХ
+    // 10. ОБРАБОТКА ДАННЫХ
     // ============================================
     function processData(data) {
         updateCardIfChanged('card0', data.guild, 0);
@@ -605,7 +640,7 @@
     }
 
     // ============================================
-    // 12. WEBSOCKET
+    // 11. WEBSOCKET
     // ============================================
     function connectWebSocket() {
         setPanelStatus(false);
@@ -642,7 +677,7 @@
     }
 
     // ============================================
-    // 13. УПРАВЛЕНИЕ МАСШТАБОМ (С НОВОЙ КНОПКОЙ)
+    // 12. УПРАВЛЕНИЕ МАСШТАБОМ
     // ============================================
     function setupControls() {
         document.getElementById('btn1h').addEventListener('click', function() {
@@ -653,35 +688,29 @@
         });
         
         document.getElementById('btn30m').addEventListener('click', function() {
-            console.log('[КНОПКА] Нажата 30м');
             currentRange = RANGE_MAP['30м'];
             setActiveScaleButton(this);
             performChartUpdate();
         });
         
         document.getElementById('btn15m').addEventListener('click', function() {
-            console.log('[КНОПКА] Нажата 15м');
             currentRange = RANGE_MAP['15м'];
             setActiveScaleButton(this);
             performChartUpdate();
         });
         
         document.getElementById('btn5m').addEventListener('click', function() {
-            console.log('[КНОПКА] Нажата 5м');
             currentRange = RANGE_MAP['5м'];
             setActiveScaleButton(this);
             performChartUpdate();
         });
         
-        // НОВАЯ КНОПКА 1м
         document.getElementById('btn1m').addEventListener('click', function() {
-            console.log('[КНОПКА] Нажата 1м');
             currentRange = RANGE_MAP['1м'];
             setActiveScaleButton(this);
             performChartUpdate();
         });
         
-        // Поля ввода
         let minTimeout, maxTimeout;
         
         document.getElementById('minTemp').addEventListener('input', function() {
@@ -716,12 +745,16 @@
     }
 
     // ============================================
-    // 14. ЗАПУСК
+    // 13. ЗАПУСК
     // ============================================
     window.onload = function() {
         setupControls();
         connectWebSocket();
         updateDebugInfo();
+        
+        document.addEventListener('touchstart', function() {
+            console.log('[ЗВУК] Аудиоконтекст инициализирован');
+        }, { once: true });
     };
 </script>
 </body>
