@@ -2,293 +2,480 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Термометр</title>
-    <!-- Chart.js для графиков -->
     <script src="chart.umd.min.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
             margin: 0;
-            padding: 10px;
+            padding: 20px;
             background: #1a1a1a;
             color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        .sensor-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 20px;
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
         }
-        .sensor-card {
-            background: #2a2a2a;
-            border-radius: 8px;
-            padding: 10px;
+        /* Верхняя строка */
+        .mode-bar {
+            padding: 12px 20px;
+            font-weight: bold;
+            font-size: 18px;
             text-align: center;
+            border-bottom: 2px solid #333;
+            transition: background-color 0.3s;
         }
-        .sensor-name {
-            font-size: 14px;
-            color: #888;
+        .mode0 { background: #0066cc; }      /* синий */
+        .mode1-green { background: #00aa00; } /* зелёный */
+        .mode1-yellow { background: #cccc00; color: #000; } /* жёлтый */
+        .mode1-red { background: #cc0000; }   /* красный */
+        
+        /* Основной ряд: левая колонка + график */
+        .main-row {
+            display: flex;
+            min-height: 500px;
         }
-        .sensor-value {
+        /* Левая колонка */
+        .left-panel {
+            width: 110px;
+            background: #222;
+            padding: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            border-right: 2px solid #333;
+        }
+        /* Карточки с цифрами */
+        .temp-card {
+            width: 90px;
+            height: 70px;
+            background: #2a2a2a;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             font-size: 24px;
             font-weight: bold;
+            margin-bottom: 5px;
+            transition: background-color 0.2s;
         }
-        .guild { color: #ff4444; }
-        .wall { color: #44ff44; }
-        .chart-container {
-            height: 250px;
-            margin-bottom: 20px;
+        /* Кнопки масштаба */
+        .scale-btn {
+            width: 90px;
+            height: 40px;
+            background: #333;
+            border: none;
+            color: white;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 2px 0;
+            transition: 0.2s;
         }
-        .mode-indicator {
-            text-align: center;
-            padding: 8px;
-            border-radius: 8px;
-            margin-bottom: 10px;
+        .scale-btn.active {
+            background: #0066cc;
             font-weight: bold;
         }
-        .mode0 { background: #0066cc; }
-        .mode1-green { background: #00aa00; }
-        .mode1-yellow { background: #cccc00; color: #000; }
-        .mode1-red { background: #cc0000; }
-        .status-bar {
+        .scale-btn:hover {
+            background: #444;
+        }
+        /* Правая часть — график */
+        .chart-area {
+            flex: 1;
+            padding: 20px 20px 20px 20px;
+            background: #1a1a1a;
+            position: relative;
+        }
+        #tempChart {
+            width: 100%;
+            height: 100%;
+            min-height: 450px;
+        }
+        /* Нижняя строка с диапазоном и статусом */
+        .bottom-bar {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 10px;
-            padding: 5px;
-            background: #2a2a2a;
-            border-radius: 8px;
+            align-items: center;
+            padding: 15px 20px;
+            background: #222;
+            border-top: 2px solid #333;
         }
-        button {
-            background: #4a4a4a;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 5px;
+        .range-group {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .range-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #2a2a2a;
+            padding: 5px 12px;
+            border-radius: 20px;
+        }
+        .range-item label {
+            color: #aaa;
             font-size: 14px;
         }
-        button.active {
-            background: #0066cc;
+        .range-item input {
+            width: 70px;
+            background: #333;
+            border: 1px solid #555;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 16px;
+            text-align: center;
+            /* Убираем стрелки у числового поля */
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        .range-item input::-webkit-outer-spin-button,
+        .range-item input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        /* Индикатор статуса */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #2a2a2a;
+            padding: 8px 16px;
+            border-radius: 30px;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .status-dot.online {
+            background: #4CAF50;
+            box-shadow: 0 0 8px #4CAF50;
+        }
+        .status-dot.offline {
+            background: #f44336;
+            box-shadow: 0 0 8px #f44336;
+        }
+        .status-text {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .status-text.online {
+            color: #4CAF50;
+        }
+        .status-text.offline {
+            color: #f44336;
         }
     </style>
 </head>
 <body>
-    <div id="modeIndicator" class="mode-indicator mode0">MODE 1 (СТАБИЛИЗАЦИЯ)</div>
+<div class="container">
+    <!-- Верхняя строка с режимом (меняет цвет) -->
+    <div class="mode-bar mode0" id="modeDisplay">
+        MODE 1 (СТАБИЛИЗАЦИЯ) 00:00
+    </div>
+
+    <!-- Основной ряд: левая колонка + график -->
+    <div class="main-row">
+        <!-- Левая колонка -->
+        <div class="left-panel">
+            <!-- 
+                ============================================================
+                ПОРЯДОК КАРТОЧЕК СВЕРХУ ВНИЗ: 100см, 75см, 50см, ГИЛЬЗА
+                ============================================================
+                Цвета задаются в формате #RRGGBB:
+                #00FF00 - зеленый (гильза)
+                #FFFF00 - желтый (50см)
+                #00FFFF - голубой (75см)
+                #FFA500 - оранжевый (100см)
+                
+                Чтобы поменять цвет - замени код цвета в style="color: #......"
+                Например, #FF0000 - красный, #0000FF - синий и т.д.
+            -->
+            <!-- 100см (самый верх) -->
+            <div class="temp-card" id="card3" style="color: #FFA500;">--.--</div>
+            <!-- 75см -->
+            <div class="temp-card" id="card2" style="color: #00FFFF;">--.--</div>
+            <!-- 50см -->
+            <div class="temp-card" id="card1" style="color: #FFFF00;">--.--</div>
+            <!-- ГИЛЬЗА (самый низ) -->
+            <div class="temp-card" id="card0" style="color: #00FF00;">--.--</div>
+            
+            <!-- Кнопки масштаба вертикально -->
+            <button class="scale-btn active" id="btn1h">1ч</button>
+            <button class="scale-btn" id="btn30m">30м</button>
+            <button class="scale-btn" id="btn15m">15м</button>
+            <button class="scale-btn" id="btn5m">5м</button>
+        </div>
+
+        <!-- График справа -->
+        <div class="chart-area">
+            <canvas id="tempChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Нижняя строка: диапазон слева, статус справа -->
+    <div class="bottom-bar">
+        <div class="range-group">
+            <div class="range-item">
+                <label>от</label>
+                <input type="number" id="minTemp" value="20" step="1" min="-50" max="150">
+            </div>
+            <div class="range-item">
+                <label>до</label>
+                <input type="number" id="maxTemp" value="90" step="1" min="-50" max="150">
+            </div>
+        </div>
+        
+        <!-- Индикатор статуса (не зависит от режима) -->
+        <div class="status-indicator" id="statusIndicator">
+            <span class="status-dot offline" id="statusDot"></span>
+            <span class="status-text offline" id="statusText">OFFLINE</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============================================
+    // 1. НАСТРОЙКИ
+    // ============================================
+    const MAX_POINTS = 120; // 2 часа данных (максимум)
+    const WS_URL = 'ws://192.168.4.1:8080';
     
-    <div class="status-bar">
-        <span>Клиентов: <span id="clientCount">0</span></span>
-        <span>⚡ <span id="connectionStatus">Подключение...</span></span>
-    </div>
-
-    <div class="sensor-grid">
-        <div class="sensor-card">
-            <div class="sensor-name">ГИЛЬЗА</div>
-            <div id="guildValue" class="sensor-value guild">--.--</div>
-        </div>
-        <div class="sensor-card">
-            <div class="sensor-name">СТЕНКА 100</div>
-            <div id="wall100Value" class="sensor-value wall">--.--</div>
-        </div>
-        <div class="sensor-card">
-            <div class="sensor-name">СТЕНКА 75</div>
-            <div id="wall75Value" class="sensor-value wall">--.--</div>
-        </div>
-        <div class="sensor-card">
-            <div class="sensor-name">СТЕНКА 50</div>
-            <div id="wall50Value" class="sensor-value wall">--.--</div>
-        </div>
-    </div>
-
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-        <button id="range1h" class="active">1 час</button>
-        <button id="range30m">30 мин</button>
-        <button id="range15m">15 мин</button>
-        <button id="range5m">5 мин</button>
-    </div>
-
-    <div class="chart-container">
-        <canvas id="tempChart"></canvas>
-    </div>
-
-    <script>
-        // Конфигурация
-        const MAX_POINTS = 3600; // 1 час при 1 измерении в секунду
-        const WS_URL = 'ws://192.168.4.1:8080';
-        
-        // Хранилище данных
-        let timeLabels = [];
-        let guildData = [];
-        let wall100Data = [];
-        let wall75Data = [];
-        let wall50Data = [];
-        
-        // WebSocket
-        let socket;
-        let reconnectTimer;
-        let clientCount = 0;
-        
-        // График
-        let chart;
-        let currentRange = '1h'; // 1h, 30m, 15m, 5m
-        
-        // Инициализация графика
-        function initChart() {
-            const ctx = document.getElementById('tempChart').getContext('2d');
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: timeLabels,
-                    datasets: [
-                        { label: 'Гильза', data: guildData, borderColor: '#ff4444', tension: 0.1, pointRadius: 0 },
-                        { label: 'Стенка 100', data: wall100Data, borderColor: '#44ff44', tension: 0.1, pointRadius: 0 },
-                        { label: 'Стенка 75', data: wall75Data, borderColor: '#44ff44', tension: 0.1, pointRadius: 0 },
-                        { label: 'Стенка 50', data: wall50Data, borderColor: '#44ff44', tension: 0.1, pointRadius: 0 }
-                    ]
+    // Хранилище данных
+    let timeLabels = [];
+    let guildData = [];
+    let wall50Data = [];
+    let wall75Data = [];
+    let wall100Data = [];
+    
+    // WebSocket
+    let socket;
+    let reconnectTimer;
+    
+    // График
+    let chart;
+    let currentRange = 60; // 1 час (60 точек)
+    
+    // ============================================
+    // 2. ИНИЦИАЛИЗАЦИЯ ГРАФИКА
+    // ============================================
+    // Цвета линий на графике (должны совпадать с карточками)
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: timeLabels,
+            datasets: [
+                { label: 'Гильза', data: guildData, borderColor: '#00FF00', tension: 0.1, pointRadius: 0 },
+                { label: '50см', data: wall50Data, borderColor: '#FFFF00', tension: 0.1, pointRadius: 0 },
+                { label: '75см', data: wall75Data, borderColor: '#00FFFF', tension: 0.1, pointRadius: 0 },
+                { label: '100см', data: wall100Data, borderColor: '#FFA500', tension: 0.1, pointRadius: 0 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 100 },
+            scales: {
+                y: { 
+                    title: { display: true, text: '°C', color: '#ccc' },
+                    min: 20,
+                    max: 90,
+                    grid: { color: '#333' },
+                    ticks: { color: '#ccc' }
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: { duration: 0 },
-                    scales: {
-                        y: { 
-                            title: { display: true, text: '°C' },
-                            min: 20,
-                            max: 90
-                        },
-                        x: { 
-                            display: true,
-                            ticks: { maxTicksLimit: 5 }
-                        }
-                    },
-                    plugins: {
-                        legend: { display: false }
-                    }
+                x: { 
+                    ticks: { color: '#ccc', maxTicksLimit: 8 }
                 }
-            });
-        }
-        
-        // Обновление диапазона отображения
-        function updateRange() {
-            if (!chart) return;
-            
-            let pointsToShow = 3600; // 1 час
-            if (currentRange === '30m') pointsToShow = 1800;
-            else if (currentRange === '15m') pointsToShow = 900;
-            else if (currentRange === '5m') pointsToShow = 300;
-            
-            const start = Math.max(0, timeLabels.length - pointsToShow);
-            chart.data.labels = timeLabels.slice(start);
-            chart.data.datasets[0].data = guildData.slice(start);
-            chart.data.datasets[1].data = wall100Data.slice(start);
-            chart.data.datasets[2].data = wall75Data.slice(start);
-            chart.data.datasets[3].data = wall50Data.slice(start);
-            chart.update();
-        }
-        
-        // Обработка полученных данных
-        function processData(data) {
-            // Обновляем цифры
-            document.getElementById('guildValue').textContent = data.guild.toFixed(2);
-            document.getElementById('wall100Value').textContent = data.wall100.toFixed(2);
-            document.getElementById('wall75Value').textContent = data.wall75.toFixed(2);
-            document.getElementById('wall50Value').textContent = data.wall50.toFixed(2);
-            
-            // Обновляем индикатор режима
-            const modeEl = document.getElementById('modeIndicator');
-            if (data.mode === 0) {
-                modeEl.className = 'mode-indicator mode0';
-                modeEl.textContent = 'MODE 1 (СТАБИЛИЗАЦИЯ)';
-            } else {
-                let colorClass = 'mode1-green';
-                let colorText = 'ЗЕЛЁНЫЙ';
-                if (data.color === 1) { colorClass = 'mode1-yellow'; colorText = 'ЖЁЛТЫЙ'; }
-                else if (data.color === 2) { colorClass = 'mode1-red'; colorText = 'КРАСНЫЙ'; }
-                modeEl.className = `mode-indicator ${colorClass}`;
-                modeEl.textContent = `MODE 2 (${colorText})`;
+            },
+            plugins: {
+                legend: { display: false }
             }
-            
-            // Добавляем время
-            const now = new Date();
-            const timeStr = now.getHours().toString().padStart(2,'0') + ':' + 
-                           now.getMinutes().toString().padStart(2,'0') + ':' + 
-                           now.getSeconds().toString().padStart(2,'0');
-            
-            // Добавляем данные в массивы
-            timeLabels.push(timeStr);
-            guildData.push(data.guild);
-            wall100Data.push(data.wall100);
-            wall75Data.push(data.wall75);
-            wall50Data.push(data.wall50);
-            
-            // Ограничиваем длину
-            if (timeLabels.length > MAX_POINTS) {
-                timeLabels.shift();
-                guildData.shift();
-                wall100Data.shift();
-                wall75Data.shift();
-                wall50Data.shift();
-            }
-            
-            updateRange();
+        }
+    });
+
+    // ============================================
+    // 3. ОБНОВЛЕНИЕ ДИАПАЗОНА ГРАФИКА
+    // ============================================
+    function updateChartRange() {
+        const start = Math.max(0, timeLabels.length - currentRange);
+        const end = timeLabels.length;
+        
+        chart.data.labels = timeLabels.slice(start, end);
+        chart.data.datasets[0].data = guildData.slice(start, end);
+        chart.data.datasets[1].data = wall50Data.slice(start, end);
+        chart.data.datasets[2].data = wall75Data.slice(start, end);
+        chart.data.datasets[3].data = wall100Data.slice(start, end);
+        chart.update();
+    }
+
+    // ============================================
+    // 4. ОБРАБОТКА ПОЛУЧЕННЫХ ДАННЫХ
+    // ============================================
+    function processData(data) {
+        // Обновляем цифры в карточках
+        document.getElementById('card0').textContent = data.guild.toFixed(2);
+        document.getElementById('card1').textContent = data.wall50.toFixed(2);
+        document.getElementById('card2').textContent = data.wall75.toFixed(2);
+        document.getElementById('card3').textContent = data.wall100.toFixed(2);
+        
+        // Обновляем индикатор режима и цвет верхней плашки
+        const modeDisplay = document.getElementById('modeDisplay');
+        if (data.mode === 0) {
+            modeDisplay.className = 'mode-bar mode0';
+            modeDisplay.textContent = 'MODE 1 (СТАБИЛИЗАЦИЯ) ' + getTimeString();
+        } else {
+            let colorClass = 'mode1-green';
+            let colorText = 'ЗЕЛЁНЫЙ';
+            if (data.color === 1) { colorClass = 'mode1-yellow'; colorText = 'ЖЁЛТЫЙ'; }
+            else if (data.color === 2) { colorClass = 'mode1-red'; colorText = 'КРАСНЫЙ'; }
+            modeDisplay.className = `mode-bar ${colorClass}`;
+            modeDisplay.textContent = `MODE 2 (${colorText}) ` + getTimeString();
         }
         
-        // Подключение к WebSocket
-        function connectWebSocket() {
-            document.getElementById('connectionStatus').textContent = 'Подключение...';
-            
-            socket = new WebSocket(WS_URL);
-            
-            socket.onopen = function() {
-                document.getElementById('connectionStatus').textContent = '🟢 Online';
-                if (reconnectTimer) clearInterval(reconnectTimer);
-            };
-            
-            socket.onclose = function() {
-                document.getElementById('connectionStatus').textContent = '🔴 Offline';
-                reconnectTimer = setInterval(connectWebSocket, 3000);
-            };
-            
-            socket.onmessage = function(event) {
-                try {
-                    const data = JSON.parse(event.data);
-                    processData(data);
-                } catch(e) {
-                    console.log('Ошибка парсинга:', e);
-                }
-            };
+        // Добавляем время
+        const now = new Date();
+        const timeStr = now.getHours().toString().padStart(2,'0') + ':' + 
+                       now.getMinutes().toString().padStart(2,'0') + ':' + 
+                       now.getSeconds().toString().padStart(2,'0');
+        
+        // Добавляем данные в массивы
+        timeLabels.push(timeStr);
+        guildData.push(data.guild);
+        wall50Data.push(data.wall50);
+        wall75Data.push(data.wall75);
+        wall100Data.push(data.wall100);
+        
+        // Ограничиваем длину массивов
+        if (timeLabels.length > MAX_POINTS) {
+            timeLabels.shift();
+            guildData.shift();
+            wall50Data.shift();
+            wall75Data.shift();
+            wall100Data.shift();
         }
         
-        // Запуск при загрузке
-        window.onload = function() {
-            initChart();
-            connectWebSocket();
-            
-            // Кнопки диапазона
-            document.getElementById('range1h').onclick = function() {
-                currentRange = '1h';
-                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                updateRange();
-            };
-            document.getElementById('range30m').onclick = function() {
-                currentRange = '30m';
-                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                updateRange();
-            };
-            document.getElementById('range15m').onclick = function() {
-                currentRange = '15m';
-                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                updateRange();
-            };
-            document.getElementById('range5m').onclick = function() {
-                currentRange = '5m';
-                document.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                updateRange();
-            };
+        // Обновляем график
+        updateChartRange();
+    }
+
+    // ============================================
+    // 5. ФОРМАТИРОВАНИЕ ВРЕМЕНИ (ЗАГЛУШКА)
+    // ============================================
+    function getTimeString() {
+        // Здесь потом будет реальное время от ESP32
+        return '00:00';
+    }
+
+    // ============================================
+    // 6. ПОДКЛЮЧЕНИЕ К WEBSOCKET
+    // ============================================
+    function connectWebSocket() {
+        setStatus(false);
+        
+        socket = new WebSocket(WS_URL);
+        
+        socket.onopen = function() {
+            setStatus(true);
+            if (reconnectTimer) clearInterval(reconnectTimer);
         };
-    </script>
+        
+        socket.onclose = function() {
+            setStatus(false);
+            reconnectTimer = setInterval(connectWebSocket, 3000);
+        };
+        
+        socket.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                processData(data);
+            } catch(e) {
+                console.log('Ошибка парсинга:', e);
+            }
+        };
+    }
+
+    // ============================================
+    // 7. УПРАВЛЕНИЕ СТАТУСОМ
+    // ============================================
+    function setStatus(online) {
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        
+        if (online) {
+            statusDot.className = 'status-dot online';
+            statusText.className = 'status-text online';
+            statusText.textContent = 'ONLINE';
+        } else {
+            statusDot.className = 'status-dot offline';
+            statusText.className = 'status-text offline';
+            statusText.textContent = 'OFFLINE';
+        }
+    }
+
+    // ============================================
+    // 8. КНОПКИ МАСШТАБА
+    // ============================================
+    document.getElementById('btn1h').onclick = function() {
+        document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        currentRange = 60;
+        updateChartRange();
+    };
+    document.getElementById('btn30m').onclick = function() {
+        document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        currentRange = 30;
+        updateChartRange();
+    };
+    document.getElementById('btn15m').onclick = function() {
+        document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        currentRange = 15;
+        updateChartRange();
+    };
+    document.getElementById('btn5m').onclick = function() {
+        document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        currentRange = 5;
+        updateChartRange();
+    };
+
+    // ============================================
+    // 9. РУЧНОЙ ДИАПАЗОН ПО Y
+    // ============================================
+    document.getElementById('minTemp').oninput = function() {
+        chart.options.scales.y.min = parseFloat(this.value) || 20;
+        chart.update();
+    };
+    document.getElementById('maxTemp').oninput = function() {
+        chart.options.scales.y.max = parseFloat(this.value) || 90;
+        chart.update();
+    };
+
+    // ============================================
+    // 10. ЗАПУСК ПРИ ЗАГРУЗКЕ
+    // ============================================
+    window.onload = function() {
+        connectWebSocket();
+    };
+</script>
 </body>
 </html>
