@@ -2,17 +2,21 @@
  * ============================================================================
  * @file wifi_mqtt.cpp
  * @brief Веб-сервер + WebSocket для передачи данных
- * @version 2.0
+ * @version 2.2
  * 
  * ОСОБЕННОСТИ:
  * - Веб-сервер на порту 80 отдаёт index.html из LittleFS
  * - WebSocket на порту 8080 передаёт данные в реальном времени
+ * - Добавлена передача времени с дисплея (ЧЧ:ММ)
+ * - Добавлена передача базовой температуры гильзы (baseTemp)
  * ============================================================================
  */
 
 #include "wifi_mqtt.h"
 #include "globals.h"
 #include "sensors.h"
+#include "mode2_timer.h"  // Для mode2_timer_get_formatted()
+#include "mode2_logic.h"  // Для guildBaseTemp
 #include <LittleFS.h>
 
 // ============================================================================
@@ -22,17 +26,50 @@ WebSocketsServer webSocket = WebSocketsServer(WEBSOCKET_PORT);
 AsyncWebServer server(80);  // веб-сервер на порту 80
 bool wifiClientConnected = false;
 
+// Внешние переменные для времени из display_engine.cpp
+extern uint32_t timeStartMs;
+extern bool timeIsCounting;
+
+// guildBaseTemp уже объявлена в mode2_logic.h
+
 // ============================================================================
-// ФОРМИРОВАНИЕ JSON С ТЕМПЕРАТУРАМИ
+// ФОРМИРОВАНИЕ JSON С ТЕМПЕРАТУРАМИ И ВРЕМЕНЕМ
 // ============================================================================
 static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
-  float t0 = sensors[0].temp;
-  float t1 = sensors[1].temp;
-  float t2 = sensors[2].temp;
-  float t3 = sensors[3].temp;
+  float t0 = sensors[0].temp;  // 100см
+  float t1 = sensors[1].temp;  // 75см
+  float t2 = sensors[2].temp;  // 50см
+  float t3 = sensors[3].temp;  // гильза
   int mode = sysData.mode;
   int color = guildColorState;
+  
+  // ========================================================================
+  // ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ В ФОРМАТЕ ЧЧ:ММ
+  // ========================================================================
+  char timeStr[6] = "00:00";
+  
+  if (mode == 0) {
+    if (timeIsCounting) {
+      uint32_t elapsed = millis() - timeStartMs;
+      uint32_t minutes = elapsed / 60000UL;
+      uint8_t hours = minutes / 60;
+      uint8_t mins = minutes % 60;
+      snprintf(timeStr, sizeof(timeStr), "%02d:%02d", hours, mins);
+    }
+  } else {
+    String mode2time = mode2_timer_get_formatted();
+    strncpy(timeStr, mode2time.c_str(), sizeof(timeStr) - 1);
+    timeStr[5] = '\0';
+  }
 
+  // ========================================================================
+  // ПОЛУЧАЕМ БАЗОВУЮ ТЕМПЕРАТУРУ (правка №2)
+  // ========================================================================
+  float baseTemp = guildBaseTemp;  // из mode2_logic.cpp
+
+  // ========================================================================
+  // ФОРМИРУЕМ JSON (ДОБАВЛЕНО ПОЛЕ "baseTemp")
+  // ========================================================================
   snprintf(buffer, bufferSize,
            "{"
            "\"guild\":%.2f,"
@@ -40,9 +77,11 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
            "\"wall75\":%.2f,"
            "\"wall50\":%.2f,"
            "\"mode\":%d,"
-           "\"color\":%d"
+           "\"color\":%d,"
+           "\"time\":\"%s\","
+           "\"baseTemp\":%.2f"          // новое поле
            "}",
-           t3, t0, t1, t2, mode, color);
+           t3, t0, t1, t2, mode, color, timeStr, baseTemp);
 }
 
 // ============================================================================
@@ -55,7 +94,7 @@ void broadcastJSON(const char* json) {
 }
 
 void sendTemperaturesToClients() {
-  char jsonBuffer[128];
+  char jsonBuffer[160];  // чуть больше из-за baseTemp
   buildTemperaturesJSON(jsonBuffer, sizeof(jsonBuffer));
   broadcastJSON(jsonBuffer);
 }
@@ -75,7 +114,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
         IPAddress ip = webSocket.remoteIP(num);
         Serial.printf("[WiFi] Клиент #%u подключился: %s\n", num, ip.toString().c_str());
         wifiClientConnected = true;
-        sendTemperaturesToClients();  // сразу отправляем данные
+        sendTemperaturesToClients();
       }
       break;
 
@@ -89,25 +128,21 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
 }
 
 // ============================================================================
-// ИНИЦИАЛИЗАЦИЯ ВЕБ-СЕРВЕРА (отдаёт index.html из LittleFS)
+// ИНИЦИАЛИЗАЦИЯ ВЕБ-СЕРВЕРА
 // ============================================================================
 void initWebServer() {
-  // Монтируем файловую систему LittleFS
   if (!LittleFS.begin()) {
     Serial.println("[WEB] ❌ Ошибка монтирования LittleFS!");
     return;
   }
   Serial.println("[WEB] ✅ LittleFS смонтирована");
 
-  // При обращении к корню сайта отдаём index.html
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  // +++ ЭТА СТРОКА РАЗРЕШАЕТ ОТДАЧУ ЛЮБЫХ ФАЙЛОВ +++
   server.serveStatic("/", LittleFS, "/");
 
-  // Запускаем сервер
   server.begin();
   Serial.println("[WEB] ✅ Сервер запущен на порту 80");
   Serial.println("[WEB] Откройте в браузере http://192.168.4.1");
@@ -128,16 +163,15 @@ void initWebSocket() {
 void taskWiFi(void* pvParameters) {
   Serial.println("[WiFi] Задача запущена");
 
-  initWebServer();  // запускаем веб-сервер (порт 80)
-  initWebSocket();  // запускаем WebSocket (порт 8080)
+  initWebServer();
+  initWebSocket();
 
   TickType_t lastWake = xTaskGetTickCount();
   uint32_t lastSend = 0;
 
   while (1) {
-    webSocket.loop();  // обслуживаем WebSocket
+    webSocket.loop();
 
-    // Раз в секунду отправляем данные всем клиентам
     uint32_t now = millis();
     if (now - lastSend >= 1000) {
       if (wifiClientConnected) {

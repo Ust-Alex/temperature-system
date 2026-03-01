@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebSocketsServer.h>
-#include <ESPAsyncWebServer.h>  // для веб-сервера
+#include <ESPAsyncWebServer.h>
 
 // ============================================================================
 // КОНСТАНТЫ WiFi
@@ -13,22 +13,22 @@
 #define WEBSOCKET_PORT 8080          // Порт для WebSocket
 
 // ============================================================================
-// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (доступны из других файлов)
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // ============================================================================
 extern WebSocketsServer webSocket;
-extern AsyncWebServer server;        // веб-сервер
+extern AsyncWebServer server;
 extern bool wifiClientConnected;
 
 // ============================================================================
 // ФУНКЦИИ ИНИЦИАЛИЗАЦИИ
 // ============================================================================
-void initWebServer();                // запуск веб-сервера
-void initWebSocket();                // запуск WebSocket
+void initWebServer();
+void initWebSocket();
 
 // ============================================================================
 // ФУНКЦИИ ОТПРАВКИ ДАННЫХ
 // ============================================================================
-void sendTemperaturesToClients();    // отправить данные всем клиентам
+void sendTemperaturesToClients();
 void broadcastJSON(const char* json);
 
 // ============================================================================
