@@ -158,24 +158,44 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
+            transition: all 0.3s;
+        }
+        /* Пульсация */
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
         }
         .panel-status-dot.online {
             background: #4CAF50;
             box-shadow: 0 0 6px #4CAF50;
+            animation: none;
+        }
+        .panel-status-text.online {
+            color: #4CAF50;
+            animation: none;
+        }
+        .panel-status-dot.offline-yellow {
+            background: #ffaa00;
+            box-shadow: 0 0 6px #ffaa00;
+            animation: pulse 1.5s infinite;
+        }
+        .panel-status-text.offline-yellow {
+            color: #ffaa00;
+            animation: pulse 1.5s infinite;
         }
         .panel-status-dot.offline {
             background: #f44336;
             box-shadow: 0 0 6px #f44336;
+            animation: pulse 1.5s infinite;
+        }
+        .panel-status-text.offline {
+            color: #f44336;
+            animation: pulse 1.5s infinite;
         }
         .panel-status-text {
             font-size: 12px;
             font-weight: bold;
-        }
-        .panel-status-text.online {
-            color: #4CAF50;
-        }
-        .panel-status-text.offline {
-            color: #f44336;
         }
         
         /* Правая часть — график */
@@ -239,11 +259,11 @@
             <div class="temp-card" id="card0" style="color: #00FF00;">--.--</div> <!-- гильза -->
             
             <!-- КНОПКИ МАСШТАБА (5 ШТУК) -->
-            <button class="scale-btn" id="btn1h">1ч</button>
-            <button class="scale-btn" id="btn30m">30м</button>
-            <button class="scale-btn" id="btn15m">15м</button>
-            <button class="scale-btn" id="btn5m">5м</button>
-            <button class="scale-btn active" id="btn1m">1м</button>  <!-- active теперь здесь -->
+            <button class="scale-btn" id="btn1h" data-range="1ч">1ч</button>
+            <button class="scale-btn" id="btn30m" data-range="30м">30м</button>
+            <button class="scale-btn" id="btn15m" data-range="15м">15м</button>
+            <button class="scale-btn" id="btn5m" data-range="5м">5м</button>
+            <button class="scale-btn active" id="btn1m" data-range="1м">1м</button>
             
             <!-- Нижний блок (от/до и ONLINE) -->
             <div class="panel-bottom">
@@ -279,481 +299,448 @@
 
 <script>
     // ============================================
-    // 1. НАСТРОЙКИ
+    // 1. КОНФИГУРАЦИЯ (оптимизировано)
     // ============================================
-    const MAX_POINTS = 7200;
-    // ИСПРАВЛЕНО: теперь адрес берётся из текущего хоста
-    const WS_URL = 'ws://' + window.location.hostname + ':8080';
-    const CHART_UPDATE_INTERVAL = 500;
-    
-    const RANGE_MAP = {
-        '1ч': 7200,
-        '30м': 3600,
-        '15м': 1800,
-        '5м': 600,
-        '1м': 120
-    };
-    
-    const RANGE_TO_BUTTON = {
-        7200: '1ч',
-        3600: '30м',
-        1800: '15м',
-        600: '5м',
-        120: '1м'
-    };
-    
-    // ============================================
-    // 2. ЗВУКИ
-    // ============================================
-    const soundTormazi = new Audio('/tormazi.wav');
-    const soundZhdati = new Audio('/zhdati.wav');
-    
-    let soundInterval = null;
-    let yellowCycleState = false;
-    let lastColor = -1;
-    
-    function playSound(sound) {
-        if (!sound) return;
-        sound.currentTime = 0;
-        sound.play().catch(e => console.log('Звук не удался (нужно взаимодействие)', e));
-    }
-    
-    function stopAllSounds() {
-        if (soundInterval) {
-            clearInterval(soundInterval);
-            soundInterval = null;
-        }
-        yellowCycleState = false;
-        console.log('[ЗВУК] Все циклы остановлены');
-    }
-    
-    function startYellowCycle() {
-        stopAllSounds();
-        console.log('[ЗВУК] Запуск жёлтого цикла (60 сек, чередование)');
-        yellowCycleState = false;
-        
-        soundInterval = setInterval(() => {
-            if (yellowCycleState) {
-                playSound(soundTormazi);
-                console.log('[ЗВУК] Жёлтый цикл: tormazi');
-            } else {
-                playSound(soundZhdati);
-                console.log('[ЗВУК] Жёлтый цикл: zhdati');
-            }
-            yellowCycleState = !yellowCycleState;
-        }, 60000);
-    }
-    
-    function startRedCycle() {
-        stopAllSounds();
-        console.log('[ЗВУК] Запуск красного цикла (30 сек, tormazi)');
-        
-        soundInterval = setInterval(() => {
-            playSound(soundTormazi);
-            console.log('[ЗВУК] Красный цикл: tormazi');
-        }, 30000);
-    }
-    
-    // ============================================
-    // 3. ОСТАЛЬНЫЕ НАСТРОЙКИ
-    // ============================================
-    let socket;
-    let reconnectTimer;
-    let chart;
-    let currentRange = 120;  // ИЗМЕНЕНО: теперь 1 минута (было 7200)
-    
-    const dataBuffer = {
-        time: new Array(MAX_POINTS).fill(''),
-        guild: new Array(MAX_POINTS).fill(null),
-        wall50: new Array(MAX_POINTS).fill(null),
-        wall75: new Array(MAX_POINTS).fill(null),
-        wall100: new Array(MAX_POINTS).fill(null),
-        index: 0,
-        count: 0,
-        maxPoints: MAX_POINTS,
-        lastTime: ''
-    };
-    
-    const lastValues = {
-        mode: -1,
-        color: -1,
-        time: '',
-        baseTemp: null,
-        temps: [null, null, null, null]
-    };
-    
-    let chartUpdateTimer = null;
-    let pendingChartUpdate = false;
-    
-    // ============================================
-    // 4. ИНИЦИАЛИЗАЦИЯ ГРАФИКА
-    // ============================================
-    const ctx = document.getElementById('tempChart').getContext('2d');
-    chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [
-                { label: 'Гильза', data: [], borderColor: '#00FF00', tension: 0.1, pointRadius: 0 },
-                { label: '50см', data: [], borderColor: '#FFFF00', tension: 0.1, pointRadius: 0 },
-                { label: '75см', data: [], borderColor: '#00FFFF', tension: 0.1, pointRadius: 0 },
-                { label: '100см', data: [], borderColor: '#FFA500', tension: 0.1, pointRadius: 0 },
-                { 
-                    label: 'База', 
-                    data: [], 
-                    borderColor: '#FF0000', 
-                    backgroundColor: '#FF0000',
-                    tension: 0,
-                    pointRadius: 2,
-                    pointStyle: 'circle',
-                    showLine: false,
-                    order: 0
-                }
-            ]
+    const CONFIG = {
+        MAX_POINTS: 7200,
+        WS_URL: 'ws://' + window.location.hostname + ':8080',
+        CHART_UPDATE_INTERVAL: 500,
+        RANGES: {
+            '1ч': 7200,
+            '30м': 3600,
+            '15м': 1800,
+            '5м': 600,
+            '1м': 120
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: { duration: 100 },
-            scales: {
-                y: { 
-                    title: { display: false },
-                    min: 20,
-                    max: 90,
-                    grid: { color: '#333' },
-                    ticks: { 
-                        color: '#ccc',
-                        stepSize: 0.5,
-                        callback: function(value) {
-                            return value.toFixed(1);
+        RECONNECT: {
+            MAX_ATTEMPTS: 5,
+            DELAYS: [1, 2, 4, 8, 15, 30, 30, 30, 30, 30],
+            MAX_DELAY: 30
+        }
+    };
+
+    // ============================================
+    // 2. СОСТОЯНИЕ (оптимизировано)
+    // ============================================
+    const state = {
+        // WebSocket
+        socket: null,
+        reconnectAttempts: 0,
+        reconnectTimeout: null,
+        
+        // Данные
+        dataBuffer: {
+            time: new Array(CONFIG.MAX_POINTS).fill(''),
+            guild: new Array(CONFIG.MAX_POINTS).fill(null),
+            wall50: new Array(CONFIG.MAX_POINTS).fill(null),
+            wall75: new Array(CONFIG.MAX_POINTS).fill(null),
+            wall100: new Array(CONFIG.MAX_POINTS).fill(null),
+            index: 0,
+            count: 0,
+            lastTime: ''
+        },
+        
+        // Последние значения
+        lastValues: {
+            mode: -1,
+            color: -1,
+            time: '',
+            baseTemp: null,
+            temps: [null, null, null, null]
+        },
+        
+        // UI
+        currentRange: 120,
+        chartUpdateTimer: null,
+        pendingChartUpdate: false,
+        chart: null
+    };
+
+    // ============================================
+    // 3. ЗВУКИ (сгруппированы)
+    // ============================================
+    const soundManager = {
+        tormazi: new Audio('/tormazi.wav'),
+        zhdati: new Audio('/zhdati.wav'),
+        interval: null,
+        yellowCycleState: false,
+        
+        play(sound) {
+            if (!sound) return;
+            sound.currentTime = 0;
+            sound.play().catch(e => console.log('[ЗВУК] Ошибка воспроизведения', e));
+        },
+        
+        stopAll() {
+            if (this.interval) {
+                clearInterval(this.interval);
+                this.interval = null;
+            }
+            this.yellowCycleState = false;
+            console.log('[ЗВУК] Все циклы остановлены');
+        },
+        
+        startYellowCycle() {
+            this.stopAll();
+            console.log('[ЗВУК] Запуск жёлтого цикла');
+            this.yellowCycleState = false;
+            
+            this.interval = setInterval(() => {
+                this.play(this.yellowCycleState ? this.tormazi : this.zhdati);
+                console.log(`[ЗВУК] Жёлтый цикл: ${this.yellowCycleState ? 'tormazi' : 'zhdati'}`);
+                this.yellowCycleState = !this.yellowCycleState;
+            }, 60000);
+        },
+        
+        startRedCycle() {
+            this.stopAll();
+            console.log('[ЗВУК] Запуск красного цикла');
+            
+            this.interval = setInterval(() => {
+                this.play(this.tormazi);
+                console.log('[ЗВУК] Красный цикл: tormazi');
+            }, 30000);
+        }
+    };
+
+    // ============================================
+    // 4. УТИЛИТЫ ДЛЯ РАБОТЫ С DOM
+    // ============================================
+    const dom = {
+        get: (id) => document.getElementById(id),
+        
+        updateStatus(status, attempts = 0) {
+            const dot = this.get('panelStatusDot');
+            const text = this.get('panelStatusText');
+            
+            if (status === 'online') {
+                dot.className = 'panel-status-dot online';
+                text.className = 'panel-status-text online';
+                text.textContent = 'ON';
+                state.reconnectAttempts = 0;
+            } 
+            else if (status === 'offline') {
+                const isYellow = attempts <= CONFIG.RECONNECT.MAX_ATTEMPTS;
+                dot.className = `panel-status-dot ${isYellow ? 'offline-yellow' : 'offline'}`;
+                text.className = `panel-status-text ${isYellow ? 'offline-yellow' : 'offline'}`;
+                text.textContent = 'OFF';
+            }
+        },
+        
+        updateCard(cardId, value, index) {
+            const card = this.get(cardId);
+            if (!card) return;
+            
+            const formatted = value.toFixed(2);
+            if (card.textContent !== formatted) {
+                card.textContent = formatted;
+            }
+            state.lastValues.temps[index] = value;
+        },
+        
+        updateDebugInfo() {
+            this.get('debugBuffer').textContent = `${state.dataBuffer.count}/${CONFIG.MAX_POINTS}`;
+            this.get('debugRange').textContent = state.currentRange;
+            
+            const buttonName = Object.keys(CONFIG.RANGES).find(
+                key => CONFIG.RANGES[key] === state.currentRange
+            ) || '?';
+            this.get('debugActive').textContent = buttonName;
+            this.get('debugLastTime').textContent = state.dataBuffer.lastTime || '--:--:--';
+        }
+    };
+
+    // ============================================
+    // 5. ГРАФИК
+    // ============================================
+    function initChart() {
+        const ctx = dom.get('tempChart').getContext('2d');
+        state.chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Гильза', data: [], borderColor: '#00FF00', tension: 0.1, pointRadius: 0 },
+                    { label: '50см', data: [], borderColor: '#FFFF00', tension: 0.1, pointRadius: 0 },
+                    { label: '75см', data: [], borderColor: '#00FFFF', tension: 0.1, pointRadius: 0 },
+                    { label: '100см', data: [], borderColor: '#FFA500', tension: 0.1, pointRadius: 0 },
+                    { 
+                        label: 'База', 
+                        data: [], 
+                        borderColor: '#FF0000', 
+                        backgroundColor: '#FF0000',
+                        tension: 0,
+                        pointRadius: 2,
+                        pointStyle: 'circle',
+                        showLine: false,
+                        order: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 100 },
+                scales: {
+                    y: { 
+                        title: { display: false },
+                        min: 20,
+                        max: 90,
+                        grid: { color: '#333' },
+                        ticks: { 
+                            color: '#ccc',
+                            stepSize: 0.5,
+                            callback: v => v.toFixed(1)
                         }
+                    },
+                    x: { 
+                        ticks: { color: '#ccc', maxTicksLimit: 8 }
                     }
                 },
-                x: { 
-                    ticks: { color: '#ccc', maxTicksLimit: 8 }
-                }
-            },
-            plugins: {
-                legend: { display: false }
+                plugins: { legend: { display: false } }
             }
-        }
-    });
-
-    // ============================================
-    // 5. ОБНОВЛЕНИЕ ОТЛАДКИ
-    // ============================================
-    function updateDebugInfo() {
-        document.getElementById('debugBuffer').textContent = `${dataBuffer.count}/${MAX_POINTS}`;
-        document.getElementById('debugRange').textContent = currentRange;
-        
-        const buttonName = RANGE_TO_BUTTON[currentRange] || '?';
-        document.getElementById('debugActive').textContent = buttonName;
-        
-        document.getElementById('debugLastTime').textContent = dataBuffer.lastTime || '--:--:--';
+        });
     }
 
-    // ============================================
-    // 6. ОБНОВЛЕНИЕ ГРАФИКА
-    // ============================================
     function scheduleChartUpdate() {
-        if (pendingChartUpdate) return;
-        pendingChartUpdate = true;
+        if (state.pendingChartUpdate) return;
+        state.pendingChartUpdate = true;
         
-        if (chartUpdateTimer) {
-            clearTimeout(chartUpdateTimer);
+        if (state.chartUpdateTimer) {
+            clearTimeout(state.chartUpdateTimer);
         }
         
-        chartUpdateTimer = setTimeout(() => {
+        state.chartUpdateTimer = setTimeout(() => {
             performChartUpdate();
-            pendingChartUpdate = false;
-            chartUpdateTimer = null;
-        }, CHART_UPDATE_INTERVAL);
+            state.pendingChartUpdate = false;
+            state.chartUpdateTimer = null;
+        }, CONFIG.CHART_UPDATE_INTERVAL);
     }
     
     function performChartUpdate() {
-        const start = Math.max(0, dataBuffer.count - currentRange);
-        const end = dataBuffer.count;
+        const start = Math.max(0, state.dataBuffer.count - state.currentRange);
+        const end = state.dataBuffer.count;
         
         const labels = [];
-        const guild = [];
-        const wall50 = [];
-        const wall75 = [];
-        const wall100 = [];
-        const baseLine = [];
-        
-        const baseTemp = lastValues.baseTemp;
+        const datasets = [[], [], [], [], []];
+        const baseTemp = state.lastValues.baseTemp;
         
         for (let i = start; i < end; i++) {
-            const idx = (dataBuffer.index - dataBuffer.count + i + dataBuffer.maxPoints) % dataBuffer.maxPoints;
-            labels.push(dataBuffer.time[idx]);
-            guild.push(dataBuffer.guild[idx]);
-            wall50.push(dataBuffer.wall50[idx]);
-            wall75.push(dataBuffer.wall75[idx]);
-            wall100.push(dataBuffer.wall100[idx]);
-            
-            if (lastValues.mode === 1 && baseTemp !== null) {
-                baseLine.push(baseTemp);
-            } else {
-                baseLine.push(null);
-            }
+            const idx = (state.dataBuffer.index - state.dataBuffer.count + i + CONFIG.MAX_POINTS) % CONFIG.MAX_POINTS;
+            labels.push(state.dataBuffer.time[idx]);
+            datasets[0].push(state.dataBuffer.guild[idx]);
+            datasets[1].push(state.dataBuffer.wall50[idx]);
+            datasets[2].push(state.dataBuffer.wall75[idx]);
+            datasets[3].push(state.dataBuffer.wall100[idx]);
+            datasets[4].push(state.lastValues.mode === 1 && baseTemp !== null ? baseTemp : null);
         }
         
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = guild;
-        chart.data.datasets[1].data = wall50;
-        chart.data.datasets[2].data = wall75;
-        chart.data.datasets[3].data = wall100;
-        chart.data.datasets[4].data = baseLine;
-        chart.update();
+        state.chart.data.labels = labels;
+        state.chart.data.datasets.forEach((dataset, i) => {
+            dataset.data = datasets[i];
+        });
+        state.chart.update();
         
-        updateDebugInfo();
+        dom.updateDebugInfo();
     }
 
     // ============================================
-    // 7. ОБНОВЛЕНИЕ КАРТОЧЕК
-    // ============================================
-    function updateCardIfChanged(cardId, newValue, index) {
-        const card = document.getElementById(cardId);
-        if (!card) return;
-        
-        const formatted = newValue.toFixed(2);
-        
-        if (card.textContent !== formatted) {
-            card.textContent = formatted;
-        }
-        
-        lastValues.temps[index] = newValue;
-    }
-
-    // ============================================
-    // 8. ОБНОВЛЕНИЕ ВЕРХНЕЙ ПЛАШКИ И ЗВУКОВ
+    // 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
     // ============================================
     function updateModeDisplay(mode, color, timeStr, baseTemp) {
-        const modeDisplay = document.getElementById('modeDisplay');
+        const modeDisplay = dom.get('modeDisplay');
         if (!modeDisplay) return;
         
-        if (lastValues.mode === mode && 
-            lastValues.color === color && 
-            lastValues.time === timeStr &&
-            lastValues.baseTemp === baseTemp) {
+        const last = state.lastValues;
+        if (last.mode === mode && last.color === color && 
+            last.time === timeStr && last.baseTemp === baseTemp) {
             return;
         }
         
-        // ЗВУКИ при смене цвета
-        if (color !== lastValues.color) {
-            console.log(`[ЗВУК] Смена цвета: ${lastValues.color} -> ${color}`);
+        // Звуки при смене цвета
+        if (color !== last.color) {
+            console.log(`[ЗВУК] Смена цвета: ${last.color} -> ${color}`);
             
             if (color === 1 || color === 2) {
-                playSound(soundTormazi);
+                soundManager.play(soundManager.tormazi);
             }
             
             if (color === 1) {
-                startYellowCycle();
+                soundManager.startYellowCycle();
             } 
             else if (color === 2) {
-                startRedCycle();
+                soundManager.startRedCycle();
             } 
             else if (color === 0) {
-                stopAllSounds();
+                soundManager.stopAll();
             }
         }
         
         // Обновление текста
-        let newText = '';
-        let newClass = '';
-        
+        let newText, newClass;
         if (mode === 0) {
             newClass = 'mode-bar mode0';
             newText = 'MODE 1 (СТАБИЛИЗАЦИЯ) ' + timeStr;
         } else {
-            let colorClass = 'mode1-green';
-            if (color === 1) { 
-                colorClass = 'mode1-yellow'; 
-            } else if (color === 2) { 
-                colorClass = 'mode1-red'; 
-            }
+            const colorClass = color === 1 ? 'mode1-yellow' : (color === 2 ? 'mode1-red' : 'mode1-green');
             newClass = `mode-bar ${colorClass}`;
-            
-            const baseStr = (baseTemp !== null && baseTemp !== undefined) 
-                ? baseTemp.toFixed(2) 
-                : '--.--';
+            const baseStr = baseTemp !== null ? baseTemp.toFixed(2) : '--.--';
             newText = `MODE 2 (РАБОЧИЙ ${baseStr}) ${timeStr}`;
         }
         
         modeDisplay.className = newClass;
         modeDisplay.textContent = newText;
         
-        lastValues.mode = mode;
-        lastValues.color = color;
-        lastValues.time = timeStr;
-        lastValues.baseTemp = baseTemp;
+        Object.assign(last, { mode, color, time: timeStr, baseTemp });
     }
 
-    // ============================================
-    // 9. СТАТУС
-    // ============================================
-    function setPanelStatus(online) {
-        const dot = document.getElementById('panelStatusDot');
-        const text = document.getElementById('panelStatusText');
-        
-        if (online) {
-            dot.className = 'panel-status-dot online';
-            text.className = 'panel-status-text online';
-            text.textContent = 'ON';
-        } else {
-            dot.className = 'panel-status-dot offline';
-            text.className = 'panel-status-text offline';
-            text.textContent = 'OFF';
-        }
-    }
-
-    // ============================================
-    // 10. ОБРАБОТКА ДАННЫХ
-    // ============================================
     function processData(data) {
-        updateCardIfChanged('card0', data.guild, 0);
-        updateCardIfChanged('card1', data.wall50, 1);
-        updateCardIfChanged('card2', data.wall75, 2);
-        updateCardIfChanged('card3', data.wall100, 3);
+        dom.updateCard('card0', data.guild, 0);
+        dom.updateCard('card1', data.wall50, 1);
+        dom.updateCard('card2', data.wall75, 2);
+        dom.updateCard('card3', data.wall100, 3);
         
         updateModeDisplay(data.mode, data.color, data.time || '00:00', data.baseTemp);
         
         const now = new Date();
-        const timeLabel = now.getHours().toString().padStart(2,'0') + ':' + 
-                         now.getMinutes().toString().padStart(2,'0') + ':' + 
-                         now.getSeconds().toString().padStart(2,'0');
+        const timeLabel = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
         
-        dataBuffer.lastTime = timeLabel;
+        state.dataBuffer.lastTime = timeLabel;
+        const idx = state.dataBuffer.index;
         
-        dataBuffer.time[dataBuffer.index] = timeLabel;
-        dataBuffer.guild[dataBuffer.index] = data.guild;
-        dataBuffer.wall50[dataBuffer.index] = data.wall50;
-        dataBuffer.wall75[dataBuffer.index] = data.wall75;
-        dataBuffer.wall100[dataBuffer.index] = data.wall100;
+        state.dataBuffer.time[idx] = timeLabel;
+        state.dataBuffer.guild[idx] = data.guild;
+        state.dataBuffer.wall50[idx] = data.wall50;
+        state.dataBuffer.wall75[idx] = data.wall75;
+        state.dataBuffer.wall100[idx] = data.wall100;
         
-        dataBuffer.index = (dataBuffer.index + 1) % dataBuffer.maxPoints;
-        if (dataBuffer.count < dataBuffer.maxPoints) {
-            dataBuffer.count++;
+        state.dataBuffer.index = (idx + 1) % CONFIG.MAX_POINTS;
+        if (state.dataBuffer.count < CONFIG.MAX_POINTS) {
+            state.dataBuffer.count++;
         }
         
         scheduleChartUpdate();
-        updateDebugInfo();
     }
 
     // ============================================
-    // 11. WEBSOCKET
+    // 7. WEBSOCKET (с новым индикатором)
     // ============================================
+    function scheduleReconnect() {
+        state.reconnectAttempts++;
+        
+        dom.updateStatus('offline', state.reconnectAttempts);
+        
+        const delays = CONFIG.RECONNECT.DELAYS;
+        const baseDelay = delays[Math.min(state.reconnectAttempts - 1, delays.length - 1)];
+        const jitter = (Math.random() * 4) - 2;
+        const delayMs = Math.max(1000, (baseDelay + jitter) * 1000);
+        
+        console.log(`[WS] Попытка ${state.reconnectAttempts}, через ${Math.round(delayMs/1000)}с`);
+        
+        if (state.reconnectTimeout) {
+            clearTimeout(state.reconnectTimeout);
+        }
+        
+        state.reconnectTimeout = setTimeout(() => {
+            connectWebSocket();
+        }, delayMs);
+    }
+
     function connectWebSocket() {
-        setPanelStatus(false);
+        dom.updateStatus('offline', state.reconnectAttempts + 1);
         
-        socket = new WebSocket(WS_URL);
+        if (state.socket && state.socket.readyState !== WebSocket.CLOSED) {
+            state.socket.close();
+        }
         
-        socket.onopen = function() {
-            setPanelStatus(true);
-            if (reconnectTimer) {
-                clearInterval(reconnectTimer);
-                reconnectTimer = null;
+        state.socket = new WebSocket(CONFIG.WS_URL);
+        
+        state.socket.onopen = function() {
+            console.log('[WS] Соединение установлено');
+            dom.updateStatus('online');
+            state.reconnectAttempts = 0;
+            
+            if (state.reconnectTimeout) {
+                clearTimeout(state.reconnectTimeout);
+                state.reconnectTimeout = null;
             }
         };
         
-        socket.onclose = function() {
-            setPanelStatus(false);
-            if (!reconnectTimer) {
-                reconnectTimer = setInterval(connectWebSocket, 3000);
-            }
+        state.socket.onclose = function() {
+            console.log('[WS] Соединение закрыто');
+            scheduleReconnect();
         };
         
-        socket.onmessage = function(event) {
+        state.socket.onmessage = function(event) {
             try {
-                const data = JSON.parse(event.data);
-                processData(data);
+                processData(JSON.parse(event.data));
             } catch (e) {
-                console.error('Ошибка парсинга JSON:', e);
+                console.error('[WS] Ошибка парсинга:', e);
             }
         };
         
-        socket.onerror = function(error) {
-            console.error('WebSocket ошибка:', error);
+        state.socket.onerror = function(error) {
+            console.error('[WS] Ошибка:', error);
         };
     }
 
     // ============================================
-    // 12. УПРАВЛЕНИЕ МАСШТАБОМ
+    // 8. УПРАВЛЕНИЕ МАСШТАБОМ (универсальный обработчик)
     // ============================================
     function setupControls() {
-        document.getElementById('btn1h').addEventListener('click', function() {
-            console.log('[КНОПКА] Нажата 1ч');
-            currentRange = RANGE_MAP['1ч'];
-            setActiveScaleButton(this);
-            performChartUpdate();
+        // Универсальный обработчик для кнопок масштаба
+        document.querySelectorAll('.scale-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const range = this.dataset.range;
+                if (range && CONFIG.RANGES[range]) {
+                    console.log(`[КНОПКА] Нажата ${range}`);
+                    state.currentRange = CONFIG.RANGES[range];
+                    
+                    // Обновляем активную кнопку
+                    document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    performChartUpdate();
+                }
+            });
         });
         
-        document.getElementById('btn30m').addEventListener('click', function() {
-            currentRange = RANGE_MAP['30м'];
-            setActiveScaleButton(this);
-            performChartUpdate();
-        });
-        
-        document.getElementById('btn15m').addEventListener('click', function() {
-            currentRange = RANGE_MAP['15м'];
-            setActiveScaleButton(this);
-            performChartUpdate();
-        });
-        
-        document.getElementById('btn5m').addEventListener('click', function() {
-            currentRange = RANGE_MAP['5м'];
-            setActiveScaleButton(this);
-            performChartUpdate();
-        });
-        
-        document.getElementById('btn1m').addEventListener('click', function() {
-            currentRange = RANGE_MAP['1м'];
-            setActiveScaleButton(this);
-            performChartUpdate();
-        });
-        
+        // Поля ввода с debounce
         let minTimeout, maxTimeout;
         
-        document.getElementById('minTemp').addEventListener('input', function() {
+        dom.get('minTemp').addEventListener('input', function() {
             clearTimeout(minTimeout);
             minTimeout = setTimeout(() => {
                 const val = parseFloat(this.value);
                 if (!isNaN(val)) {
-                    chart.options.scales.y.min = val;
-                    chart.update();
+                    state.chart.options.scales.y.min = val;
+                    state.chart.update();
                 }
             }, 300);
         });
         
-        document.getElementById('maxTemp').addEventListener('input', function() {
+        dom.get('maxTemp').addEventListener('input', function() {
             clearTimeout(maxTimeout);
             maxTimeout = setTimeout(() => {
                 const val = parseFloat(this.value);
                 if (!isNaN(val)) {
-                    chart.options.scales.y.max = val;
-                    chart.update();
+                    state.chart.options.scales.y.max = val;
+                    state.chart.update();
                 }
             }, 300);
         });
     }
 
-    function setActiveScaleButton(activeBtn) {
-        document.querySelectorAll('.scale-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        activeBtn.classList.add('active');
-        updateDebugInfo();
-    }
-
     // ============================================
-    // 13. ЗАПУСК
+    // 9. ЗАПУСК
     // ============================================
     window.onload = function() {
+        initChart();
         setupControls();
         connectWebSocket();
-        updateDebugInfo();
+        dom.updateDebugInfo();
         
-        document.addEventListener('touchstart', function() {
+        document.addEventListener('touchstart', () => {
             console.log('[ЗВУК] Аудиоконтекст инициализирован');
         }, { once: true });
     };
