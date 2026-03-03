@@ -56,7 +56,7 @@ void initHardware() {
   // Тестовое сообщение на дисплее (3 секунды)
   tft.setTextFont(FONT_DELTA);
   tft.setCursor(5, 100);
-  tft.print("Version 5.1");
+  tft.print("esp32ust.local");
   delay(3000);
 
   // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE И ДАТЧИКОВ

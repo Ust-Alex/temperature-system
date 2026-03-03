@@ -282,7 +282,8 @@
     // 1. НАСТРОЙКИ
     // ============================================
     const MAX_POINTS = 7200;
-    const WS_URL = 'ws://192.168.4.1:8080';
+    // ИСПРАВЛЕНО: теперь адрес берётся из текущего хоста
+    const WS_URL = 'ws://' + window.location.hostname + ':8080';
     const CHART_UPDATE_INTERVAL = 500;
     
     const RANGE_MAP = {

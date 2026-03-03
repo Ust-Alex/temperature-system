@@ -1,41 +1,37 @@
 /**
  * ============================================================================
  * @file wifi_mqtt.cpp
- * @brief Веб-сервер + WebSocket для передачи данных
- * @version 2.3
- * 
- * ОСОБЕННОСТИ:
- * - Веб-сервер на порту 80 отдаёт index.html из LittleFS
- * - WebSocket на порту 8080 передаёт данные в реальном времени
- * - Добавлена передача времени с дисплея (ЧЧ:ММ)
- * - Добавлена передача базовой температуры гильзы (baseTemp)
- * - **Увеличена мощность передатчика до максимума**
- * - **Точка доступа работает на 8-м канале** (для стабильности)
+ * @brief Веб-сервер + WebSocket + WiFiManager (режим STA)
+ * @version 3.0
  * ============================================================================
  */
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <DNSServer.h>
+#include <WiFiManager.h>
+#include <WebSocketsServer.h>
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
 
 #include "wifi_mqtt.h"
 #include "globals.h"
 #include "sensors.h"
-#include "mode2_timer.h"  // Для mode2_timer_get_formatted()
-#include "mode2_logic.h"  // Для guildBaseTemp
-#include <LittleFS.h>
+#include "mode2_timer.h"
+#include "mode2_logic.h"
 
 // ============================================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
 // ============================================================================
 WebSocketsServer webSocket = WebSocketsServer(WEBSOCKET_PORT);
-AsyncWebServer server(80);  // веб-сервер на порту 80
+AsyncWebServer server(80);
 bool wifiClientConnected = false;
 
-// Внешние переменные для времени из display_engine.cpp
 extern uint32_t timeStartMs;
 extern bool timeIsCounting;
 
-// guildBaseTemp уже объявлена в mode2_logic.h
-
 // ============================================================================
-// ФОРМИРОВАНИЕ JSON С ТЕМПЕРАТУРАМИ И ВРЕМЕНЕМ
+// ФОРМИРОВАНИЕ JSON (БЕЗ ИЗМЕНЕНИЙ)
 // ============================================================================
 static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
   float t0 = sensors[0].temp;  // 100см
@@ -44,12 +40,9 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
   float t3 = sensors[3].temp;  // гильза
   int mode = sysData.mode;
   int color = guildColorState;
-
-  // ========================================================================
-  // ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ В ФОРМАТЕ ЧЧ:ММ
-  // ========================================================================
+  
   char timeStr[6] = "00:00";
-
+  
   if (mode == 0) {
     if (timeIsCounting) {
       uint32_t elapsed = millis() - timeStartMs;
@@ -64,14 +57,8 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
     timeStr[5] = '\0';
   }
 
-  // ========================================================================
-  // ПОЛУЧАЕМ БАЗОВУЮ ТЕМПЕРАТУРУ (правка №2)
-  // ========================================================================
-  float baseTemp = guildBaseTemp;  // из mode2_logic.cpp
+  float baseTemp = guildBaseTemp;
 
-  // ========================================================================
-  // ФОРМИРУЕМ JSON (ДОБАВЛЕНО ПОЛЕ "baseTemp")
-  // ========================================================================
   snprintf(buffer, bufferSize,
            "{"
            "\"guild\":%.2f,"
@@ -81,14 +68,11 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
            "\"mode\":%d,"
            "\"color\":%d,"
            "\"time\":\"%s\","
-           "\"baseTemp\":%.2f"  // новое поле
+           "\"baseTemp\":%.2f"
            "}",
            t3, t0, t1, t2, mode, color, timeStr, baseTemp);
 }
 
-// ============================================================================
-// ОТПРАВКА ДАННЫХ КЛИЕНТАМ
-// ============================================================================
 void broadcastJSON(const char* json) {
   if (wifiClientConnected) {
     webSocket.broadcastTXT(json);
@@ -96,13 +80,13 @@ void broadcastJSON(const char* json) {
 }
 
 void sendTemperaturesToClients() {
-  char jsonBuffer[160];  // чуть больше из-за baseTemp
+  char jsonBuffer[160];
   buildTemperaturesJSON(jsonBuffer, sizeof(jsonBuffer));
   broadcastJSON(jsonBuffer);
 }
 
 // ============================================================================
-// ОБРАБОТЧИК СОБЫТИЙ WEBSOCKET
+// ОБРАБОТЧИК WEBSOCKET (БЕЗ ИЗМЕНЕНИЙ)
 // ============================================================================
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
@@ -130,7 +114,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
 }
 
 // ============================================================================
-// ИНИЦИАЛИЗАЦИЯ ВЕБ-СЕРВЕРА
+// ИНИЦИАЛИЗАЦИЯ ВЕБ-СЕРВЕРА (БЕЗ ИЗМЕНЕНИЙ)
 // ============================================================================
 void initWebServer() {
   if (!LittleFS.begin()) {
@@ -144,14 +128,12 @@ void initWebServer() {
   });
 
   server.serveStatic("/", LittleFS, "/");
-
   server.begin();
   Serial.println("[WEB] ✅ Сервер запущен на порту 80");
-  Serial.println("[WEB] Откройте в браузере http://192.168.4.1");
 }
 
 // ============================================================================
-// ИНИЦИАЛИЗАЦИЯ WEBSOCKET
+// ИНИЦИАЛИЗАЦИЯ WEBSOCKET (БЕЗ ИЗМЕНЕНИЙ)
 // ============================================================================
 void initWebSocket() {
   webSocket.begin();
@@ -160,52 +142,70 @@ void initWebSocket() {
 }
 
 // ============================================================================
-// ЗАДАЧА FREERTOS (С ИЗМЕНЕНИЯМИ)
+// ЗАДАЧА FREERTOS (С ЛОГИКОЙ WIFIMANAGER)
 // ============================================================================
 void taskWiFi(void* pvParameters) {
-  Serial.println("[WiFi] Задача запущена");
+  Serial.println("[WiFi] Задача запущена (WiFiManager)");
+
+  pinMode(CONFIG_BUTTON_PIN, INPUT_PULLUP);
 
   // ==========================================================================
-  // 1. Настройка точки доступа с фиксированным каналом
+  // 1. Настройка WiFiManager
   // ==========================================================================
-  // Останавливаем WiFi если он уже запущен (на всякий случай)
-  WiFi.mode(WIFI_OFF);
-  delay(100);
-
-  // Запускаем точку доступа на 8-м канале для лучшей стабильности
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(IPAddress(192, 168, 4, 1),
-                    IPAddress(192, 168, 4, 1),
-                    IPAddress(255, 255, 255, 0));
-
-  // ВАЖНО: последний параметр 8 - это номер канала
-  if (WiFi.softAP("TermoESP32", NULL, 8)) {  // Без пароля, канал 8
-    Serial.println("[WiFi] ✅ Точка доступа создана: TermoESP32 на канале 8");
-    Serial.printf("[WiFi] IP адрес: %s\n", WiFi.softAPIP().toString().c_str());
-  } else {
-    Serial.println("[WiFi] ❌ ОШИБКА: Не удалось создать точку доступа!");
+  WiFiManager wm;
+  
+  wm.setConnectTimeout(30);        // 30 секунд на подключение
+  wm.setConfigPortalTimeout(180);  // 3 минуты портал
+  
+  // Пытаемся подключиться. Если не получается, запускается портал "TermoESP32" (без пароля)
+  Serial.println("[WiFi] Попытка подключения к сохранённой сети...");
+  
+  if (!wm.autoConnect("TermoESP32")) {
+    Serial.println("[WiFi] ❌ Не удалось подключиться. Перезагрузка...");
+    ESP.restart();
   }
 
   // ==========================================================================
-  // 2. Увеличение мощности передатчика до максимума
+  // 2. Подключение успешно
   // ==========================================================================
-  WiFi.setTxPower(WIFI_POWER_19_5dBm);  // Максимальная мощность для ESP32
-  Serial.printf("[WiFi] Мощность передатчика: %d dBm\n", WiFi.getTxPower());
-  Serial.printf("[WiFi] Точка доступа запущена на канале 8\n");
-  
+  Serial.println("[WiFi] ✅ Подключено!");
+  Serial.printf("[WiFi] SSID: %s\n", WiFi.SSID().c_str());
+  Serial.printf("[WiFi] IP адрес: %s\n", WiFi.localIP().toString().c_str());
+
   // ==========================================================================
-  // 3. Запуск серверов
+  // 3. Запуск веб-сервера и WebSocket
   // ==========================================================================
   initWebServer();
   initWebSocket();
 
+  // ==========================================================================
+  // 4. Основной цикл задачи
+  // ==========================================================================
   TickType_t lastWake = xTaskGetTickCount();
   uint32_t lastSend = 0;
 
   while (1) {
     webSocket.loop();
 
+    // Проверка кнопки BOOT (сброс настроек при удержании 3 сек)
+    static uint32_t lastButtonCheck = 0;
     uint32_t now = millis();
+    
+    if (now - lastButtonCheck > 100) {
+      lastButtonCheck = now;
+      
+      if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        
+        if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
+          Serial.println("[WiFi] Сброс настроек по кнопке");
+          wm.resetSettings();
+          ESP.restart();
+        }
+      }
+    }
+
+    // Отправка данных раз в секунду
     if (now - lastSend >= 1000) {
       if (wifiClientConnected) {
         sendTemperaturesToClients();
