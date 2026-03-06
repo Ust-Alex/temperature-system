@@ -25,6 +25,12 @@ const CONFIG = {
     WATCHDOG: {
         PING_INTERVAL: 10000,               // пинг каждые 10 секунд (мс)
         DATA_TIMEOUT: 15000                  // если нет данных 15 сек - обрыв (мс)
+    },
+    // ДОБАВЛЕНО: Границы для зума
+    ZOOM_LIMITS: {
+        MIN_TEMP: 20,
+        MAX_TEMP: 90,
+        MIN_RANGE: 0.1
     }
 };
 
@@ -77,7 +83,6 @@ const soundManager = {
     audioEnabled: false,
     
     init() {
-        // Включаем звуки при первом касании (требование браузера)
         document.addEventListener('touchstart', () => {
             this.audioEnabled = true;
             console.log('[ЗВУК] Аудио разрешено');
@@ -113,7 +118,7 @@ const soundManager = {
             this.play(this.yellowCycleState ? this.tormazi : this.zhdati);
             console.log(`[ЗВУК] Жёлтый цикл: ${this.yellowCycleState ? 'tormazi' : 'zhdati'}`);
             this.yellowCycleState = !this.yellowCycleState;
-        }, 60000);  // 60 секунд между звуками в жёлтом режиме
+        }, 60000);
     },
     
     startRedCycle() {
@@ -123,7 +128,7 @@ const soundManager = {
         this.interval = setInterval(() => {
             this.play(this.tormazi);
             console.log('[ЗВУК] Красный цикл: tormazi');
-        }, 30000);  // 30 секунд между звуками в красном режиме
+        }, 30000);
     }
 };
 
@@ -146,7 +151,6 @@ const dom = {
         } 
         else if (status === 'offline') {
             if (state.reconnectStopped) {
-                // Если попытки исчерпаны - показываем ERR
                 dot.className = 'panel-status-dot offline';
                 text.className = 'panel-status-text offline';
                 text.textContent = 'ERR';
@@ -183,7 +187,7 @@ const dom = {
 };
 
 // ============================================
-// 5. ГРАФИК (с порядком отрисовки)
+// 5. ГРАФИК С ЗУМОМ ПО Y (ОБНОВЛЕНО)
 // ============================================
 function initChart() {
     const ctx = dom.get('tempChart').getContext('2d');
@@ -199,7 +203,7 @@ function initChart() {
                     borderWidth: 1.5,
                     tension: 0.3, 
                     pointRadius: 0,
-                    order: 1  // выше стенок
+                    order: 1
                 },
                 { 
                     label: '50см', 
@@ -208,7 +212,7 @@ function initChart() {
                     borderWidth: 1.5,
                     tension: 0.3, 
                     pointRadius: 0,
-                    order: 2  // в самом низу
+                    order: 2
                 },
                 { 
                     label: '75см', 
@@ -217,7 +221,7 @@ function initChart() {
                     borderWidth: 1.5,
                     tension: 0.3, 
                     pointRadius: 0,
-                    order: 2  // тоже внизу
+                    order: 2
                 },
                 { 
                     label: '100см', 
@@ -226,23 +230,23 @@ function initChart() {
                     borderWidth: 1.5,
                     tension: 0.3, 
                     pointRadius: 0,
-                    order: 2  // тоже внизу
+                    order: 2
                 },
                 { 
                     label: 'База', 
                     data: [], 
                     borderColor: '#FF4500', 
                     backgroundColor: '#FF4500',
-                    borderWidth: 1,  // 1 пиксель - тоньше стандартного, аккуратнее выглядит
+                    borderWidth: 1,
                     tension: 0,
                     pointRadius: function(context) {
                         const index = context.dataIndex;
-                        return index % 8 === 0 ? 1 : 0;  // точки каждые 8 измерений, размер 1px
+                        return index % 8 === 0 ? 1 : 0;
                     },
                     pointHoverRadius: 4,
                     pointStyle: 'circle',
                     showLine: false,
-                    order: 0  // ПОВЕРХ линий графиков
+                    order: 0
                 }
             ]
         },
@@ -250,10 +254,10 @@ function initChart() {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 100 },
-            spanGaps: true,  // соединять пропуски в данных
+            spanGaps: true,
             elements: {
                 line: {
-                    tension: 0.3  // сглаживание линий
+                    tension: 0.3
                 }
             },
             scales: {
@@ -272,20 +276,68 @@ function initChart() {
                     ticks: { 
                         color: '#ccc', 
                         maxTicksLimit: 8,
-                        callback: function(val, index) {
+                        callback: function(val) {
                             const label = this.getLabelForValue(val);
                             return label || '';
                         }
                     }
                 }
             },
-            plugins: { legend: { display: false } }
+            plugins: { 
+                legend: { display: false },
+                // ========== ДОБАВЛЕНО: Зум и пан по Y ==========
+                zoom: {
+                    // Панорамирование (двигать одним пальцем)
+                    pan: {
+                        enabled: true,
+                        mode: 'y',           // Только по вертикали (температура)
+                        threshold: 5,
+                        onPan: function() {
+                            // Синхронизируем поля ввода с новыми значениями
+                            if (state.chart) {
+                                const yScale = state.chart.scales.y;
+                                dom.get('minTemp').value = yScale.min.toFixed(1);
+                                dom.get('maxTemp').value = yScale.max.toFixed(1);
+                            }
+                        }
+                    },
+                    // Масштабирование (щипок двумя пальцами)
+                    zoom: {
+                        enabled: true,
+                        mode: 'y',           // Только по вертикали
+                        pinch: {
+                            enabled: true    // Щипок для телефона
+                        },
+                        wheel: {
+                            enabled: false   // Колесо мыши не нужно
+                        },
+                        onZoom: function() {
+                            // Синхронизируем поля ввода с новыми значениями
+                            if (state.chart) {
+                                const yScale = state.chart.scales.y;
+                                dom.get('minTemp').value = yScale.min.toFixed(1);
+                                dom.get('maxTemp').value = yScale.max.toFixed(1);
+                            }
+                        }
+                    },
+                    // Границы, чтобы не улететь
+                    limits: {
+                        y: {
+                            min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
+                            max: CONFIG.ZOOM_LIMITS.MAX_TEMP,
+                            minRange: CONFIG.ZOOM_LIMITS.MIN_RANGE
+                        }
+                    }
+                }
+                // ================================================
+            }
         }
     });
 }
 
+// Остальные функции (getUpdateInterval, scheduleChartUpdate, performChartUpdate и т.д.)
+// остаются без изменений - см. ваш текущий файл
 function getUpdateInterval() {
-    // Для 1-минутного масштаба обновляем чаще для плавности
     if (CONFIG.FAST_UPDATE_RANGES.includes(state.currentRange)) {
         return CONFIG.FAST_UPDATE_INTERVAL;
     }
@@ -311,12 +363,10 @@ function performChartUpdate() {
     const desiredPoints = state.currentRange;
     const totalPoints = state.dataBuffer.count;
     
-    // Создаём метки только один раз
     if (!state.chart.data.labels || state.chart.data.labels.length !== desiredPoints) {
         state.chart.data.labels = new Array(desiredPoints).fill('');
     }
     
-    // Подготавливаем массивы данных
     const datasets = [
         new Array(desiredPoints).fill(null),
         new Array(desiredPoints).fill(null),
@@ -328,7 +378,6 @@ function performChartUpdate() {
     const baseTemp = state.lastValues.baseTemp;
     const availableData = Math.min(totalPoints, desiredPoints);
     
-    // Заполняем данные справа (последние измерения)
     for (let i = 0; i < availableData; i++) {
         const dataIdx = (state.dataBuffer.index - availableData + i + CONFIG.MAX_POINTS) % CONFIG.MAX_POINTS;
         const chartIdx = desiredPoints - availableData + i;
@@ -344,7 +393,6 @@ function performChartUpdate() {
         datasets[4][chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
     }
     
-    // Обновляем данные датасетов
     state.chart.data.datasets.forEach((dataset, i) => {
         dataset.data = datasets[i];
     });
@@ -366,7 +414,6 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
         return;
     }
     
-    // Звуки при смене цвета
     if (color !== last.color) {
         console.log(`[ЗВУК] Смена цвета: ${last.color} -> ${color}`);
         
@@ -385,7 +432,6 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
         }
     }
     
-    // Обновление текста верхней плашки
     let newText, newClass;
     if (mode === 0) {
         newClass = 'mode-bar mode0';
@@ -404,7 +450,6 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
 }
 
 function processData(data) {
-    // Обновляем время последних данных (для watchdog)
     state.lastDataTime = Date.now();
     
     dom.updateCard('card0', data.guild, 0);
@@ -441,7 +486,6 @@ function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
     
     state.watchdogTimer = setInterval(() => {
-        // Проверка: давно ли были данные
         const timeSinceLastData = Date.now() - state.lastDataTime;
         
         if (state.socket && state.socket.readyState === WebSocket.OPEN) {
@@ -451,7 +495,6 @@ function startWatchdog() {
             }
         }
         
-        // Проверка: не зависло ли переподключение
         if (state.reconnectAttempts > CONFIG.RECONNECT.MAX_TOTAL_ATTEMPTS) {
             console.log('[WATCHDOG] Слишком много попыток, остановка');
             state.reconnectStopped = true;
@@ -473,7 +516,7 @@ function scheduleReconnect() {
     
     const delays = CONFIG.RECONNECT.DELAYS;
     const baseDelay = delays[Math.min(state.reconnectAttempts - 1, delays.length - 1)];
-    const jitter = (Math.random() * 4) - 2;  // случайное отклонение ±2 сек
+    const jitter = (Math.random() * 4) - 2;
     const delayMs = Math.max(1000, (baseDelay + jitter) * 1000);
     
     console.log(`[WS] Попытка ${state.reconnectAttempts}, через ${Math.round(delayMs/1000)}с`);
@@ -488,7 +531,6 @@ function scheduleReconnect() {
 }
 
 function connectWebSocket() {
-    // Очищаем предыдущий сокет если есть
     if (state.socket) {
         try {
             state.socket.onopen = null;
@@ -513,7 +555,6 @@ function connectWebSocket() {
         return;
     }
     
-    // Таймаут на подключение (если долго висит в CONNECTING)
     const connectionTimeout = setTimeout(() => {
         if (state.socket && state.socket.readyState === WebSocket.CONNECTING) {
             console.log('[WS] Таймаут подключения');
@@ -552,7 +593,6 @@ function connectWebSocket() {
     
     state.socket.onerror = function(error) {
         console.error('[WS] Ошибка:', error);
-        // Принудительно закрываем, чтобы вызвался onclose
         if (state.socket) {
             state.socket.close();
         }
@@ -588,7 +628,7 @@ function setupControls() {
                 state.chart.options.scales.y.min = val;
                 state.chart.update();
             }
-        }, 300);  // 300 мс задержки после окончания ввода
+        }, 300);
     });
     
     dom.get('maxTemp').addEventListener('input', function() {
@@ -613,7 +653,6 @@ function setupVisibilityHandler() {
         } else {
             state.pageVisible = true;
             console.log('[PAGE] Вкладка активна, проверка соединения');
-            // Если сокет не в порядке - переподключаемся
             if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
                 connectWebSocket();
             }
@@ -650,8 +689,7 @@ window.onload = function() {
     setupVisibilityHandler();
     setupCleanup();
     
-    // Первоначальная установка последнего времени
     state.lastDataTime = Date.now();
     
-    console.log('[SYSTEM] Запуск завершён, версия 3.1');
-};
+    console.log('[SYSTEM] Запуск завершён, версия 4.0 (с зумом по Y)');
+};script.js
