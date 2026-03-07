@@ -73,7 +73,7 @@ const state = {
 };
 
 // ============================================
-// 3. ЗВУКИ
+// 3. ЗВУКИ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 // ============================================
 const soundManager = {
     tormazi: new Audio('/tormazi.wav'),
@@ -81,23 +81,80 @@ const soundManager = {
     interval: null,
     yellowCycleState: false,
     audioEnabled: false,
+    audioContext: null,
     
     init() {
-        document.addEventListener('touchstart', () => {
-            this.audioEnabled = true;
-            console.log('[ЗВУК] Аудио разрешено');
-        }, { once: true });
+        console.log('[ЗВУК] Инициализация, ожидание взаимодействия...');
         
-        document.addEventListener('click', () => {
-            this.audioEnabled = true;
-            console.log('[ЗВУК] Аудио разрешено');
-        }, { once: true });
+        // Создаём AudioContext заранее
+        try {
+            const AudioCtor = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtor) {
+                this.audioContext = new AudioCtor();
+                console.log('[ЗВУК] AudioContext создан, состояние:', this.audioContext.state);
+            }
+        } catch(e) {
+            console.log('[ЗВУК] AudioContext не поддерживается');
+        }
+        
+        // Универсальная функция разблокировки
+        const unlock = () => {
+            console.log('[ЗВУК] Попытка разблокировки...');
+            
+			// 1. Разблокируем AudioContext
+			if (this.audioContext && this.audioContext.state === 'suspended') {
+				this.audioContext.resume().then(() => {
+					console.log('[ЗВУК] AudioContext разблокирован');
+				});
+			}
+
+			// 2. ПРИНУДИТЕЛЬНО включаем флаг разрешения звука
+			this.audioEnabled = true;
+			console.log('[ЗВУК] Флаг audioEnabled принудительно установлен');
+
+			// 3. Проигрываем тихий тестовый звук (уже не критично для флага)
+			const testSound = new Audio('/tormazi.wav');
+			testSound.volume = 0.01; // очень тихо
+			testSound.play().then(() => {
+				console.log('[ЗВУК] ✅ Тестовый звук сыграл');
+				testSound.pause();
+				testSound.currentTime = 0;
+			}).catch(e => {
+				console.log('[ЗВУК] Тестовый звук не сработал:', e.message);
+				// Флаг уже включён выше, так что звуки всё равно будут работать
+			});            
+
+            // 3. Удаляем обработчики после первого раза
+            document.removeEventListener('touchstart', unlock);
+            document.removeEventListener('touchend', unlock);
+            document.removeEventListener('click', unlock);
+            document.removeEventListener('keydown', unlock);
+        };
+        
+        // Вешаем на все возможные события
+        document.addEventListener('touchstart', unlock, { once: true });
+        document.addEventListener('touchend', unlock, { once: true });
+        document.addEventListener('click', unlock, { once: true });
+        document.addEventListener('keydown', unlock, { once: true });
     },
     
     play(sound) {
-        if (!sound || !this.audioEnabled) return;
+        if (!sound) return;
+        
+        if (!this.audioEnabled) {
+            console.log('[ЗВУК] Звук заблокирован, ждём взаимодействия');
+            return;
+        }
+        
         sound.currentTime = 0;
-        sound.play().catch(e => console.log('[ЗВУК] Ошибка воспроизведения', e));
+        sound.play().catch(e => {
+            console.log('[ЗВУК] Ошибка воспроизведения:', e.message);
+            // Если ошибка из-за блокировки, пробуем переразрешить
+            if (e.name === 'NotAllowedError') {
+                this.audioEnabled = false;
+                this.init(); // перезапускаем ожидание
+            }
+        });
     },
     
     stopAll() {
@@ -285,15 +342,12 @@ function initChart() {
             },
             plugins: { 
                 legend: { display: false },
-                // ========== ДОБАВЛЕНО: Зум и пан по Y ==========
                 zoom: {
-                    // Панорамирование (двигать одним пальцем)
                     pan: {
                         enabled: true,
-                        mode: 'y',           // Только по вертикали (температура)
+                        mode: 'y',
                         threshold: 5,
                         onPan: function() {
-                            // Синхронизируем поля ввода с новыми значениями
                             if (state.chart) {
                                 const yScale = state.chart.scales.y;
                                 dom.get('minTemp').value = yScale.min.toFixed(1);
@@ -301,18 +355,12 @@ function initChart() {
                             }
                         }
                     },
-                    // Масштабирование (щипок двумя пальцами)
                     zoom: {
                         enabled: true,
-                        mode: 'y',           // Только по вертикали
-                        pinch: {
-                            enabled: true    // Щипок для телефона
-                        },
-                        wheel: {
-                            enabled: false   // Колесо мыши не нужно
-                        },
+                        mode: 'y',
+                        pinch: { enabled: true },
+                        wheel: { enabled: false },
                         onZoom: function() {
-                            // Синхронизируем поля ввода с новыми значениями
                             if (state.chart) {
                                 const yScale = state.chart.scales.y;
                                 dom.get('minTemp').value = yScale.min.toFixed(1);
@@ -320,7 +368,6 @@ function initChart() {
                             }
                         }
                     },
-                    // Границы, чтобы не улететь
                     limits: {
                         y: {
                             min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
@@ -329,14 +376,14 @@ function initChart() {
                         }
                     }
                 }
-                // ================================================
             }
         }
     });
 }
 
-// Остальные функции (getUpdateInterval, scheduleChartUpdate, performChartUpdate и т.д.)
-// остаются без изменений - см. ваш текущий файл
+// ============================================
+// 6. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ГРАФИКА
+// ============================================
 function getUpdateInterval() {
     if (CONFIG.FAST_UPDATE_RANGES.includes(state.currentRange)) {
         return CONFIG.FAST_UPDATE_INTERVAL;
@@ -402,7 +449,7 @@ function performChartUpdate() {
 }
 
 // ============================================
-// 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
+// 7. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
 // ============================================
 function updateModeDisplay(mode, color, timeStr, baseTemp) {
     const modeDisplay = dom.get('modeDisplay');
@@ -480,7 +527,7 @@ function processData(data) {
 }
 
 // ============================================
-// 7. WEBSOCKET С WATCHDOG
+// 8. WEBSOCKET С WATCHDOG
 // ============================================
 function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
@@ -600,7 +647,7 @@ function connectWebSocket() {
 }
 
 // ============================================
-// 8. УПРАВЛЕНИЕ МАСШТАБОМ
+// 9. УПРАВЛЕНИЕ МАСШТАБОМ
 // ============================================
 function setupControls() {
     document.querySelectorAll('.scale-btn').forEach(btn => {
@@ -644,7 +691,7 @@ function setupControls() {
 }
 
 // ============================================
-// 9. ВОССТАНОВЛЕНИЕ ПОСЛЕ СВОРАЧИВАНИЯ
+// 10. ВОССТАНОВЛЕНИЕ ПОСЛЕ СВОРАЧИВАНИЯ
 // ============================================
 function setupVisibilityHandler() {
     document.addEventListener('visibilitychange', () => {
@@ -661,7 +708,7 @@ function setupVisibilityHandler() {
 }
 
 // ============================================
-// 10. ОЧИСТКА ПРИ ВЫХОДЕ
+// 11. ОЧИСТКА ПРИ ВЫХОДЕ
 // ============================================
 function setupCleanup() {
     window.addEventListener('beforeunload', () => {
@@ -676,7 +723,7 @@ function setupCleanup() {
 }
 
 // ============================================
-// 11. ЗАПУСК
+// 12. ЗАПУСК
 // ============================================
 window.onload = function() {
     initChart();
@@ -692,4 +739,4 @@ window.onload = function() {
     state.lastDataTime = Date.now();
     
     console.log('[SYSTEM] Запуск завершён, версия 4.0 (с зумом по Y)');
-};script.js
+};
