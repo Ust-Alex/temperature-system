@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 // Copyright 2016-2026 Hristo Gochkov, Mathieu Carbou, Emil Muratov, Will Miles
 
-#include <ChunkPrint.h>
+#include "ChunkPrint.h"
 
 size_t ChunkPrint::write(uint8_t c) {
   // handle case where len is zero
