@@ -21,7 +21,8 @@ using namespace fs;
 #define WEBSERVER_H
 
 // 3. Теперь подключаем ESPAsyncWebServer — он видит WEBSERVER_H и не конфликтует
-#include <ESPAsyncWebServer.h>
+// #include "ESPAsyncWebServer.h" //V-3.10.0
+#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h" // V-3.10.0
 
 // ============================================================================
 // КОНСТАНТЫ WiFi

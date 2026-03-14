@@ -101,30 +101,29 @@ const soundManager = {
         const unlock = () => {
             console.log('[ЗВУК] Попытка разблокировки...');
             
-			// 1. Разблокируем AudioContext
-			if (this.audioContext && this.audioContext.state === 'suspended') {
-				this.audioContext.resume().then(() => {
-					console.log('[ЗВУК] AudioContext разблокирован');
-				});
-			}
+            // 1. Разблокируем AudioContext
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                this.audioContext.resume().then(() => {
+                    console.log('[ЗВУК] AudioContext разблокирован');
+                });
+            }
 
-			// 2. ПРИНУДИТЕЛЬНО включаем флаг разрешения звука
-			this.audioEnabled = true;
-			console.log('[ЗВУК] Флаг audioEnabled принудительно установлен');
+            // 2. ПРИНУДИТЕЛЬНО включаем флаг разрешения звука
+            this.audioEnabled = true;
+            console.log('[ЗВУК] Флаг audioEnabled принудительно установлен');
 
-			// 3. Проигрываем тихий тестовый звук (уже не критично для флага)
-			const testSound = new Audio('/tormazi.wav');
-			testSound.volume = 0.01; // очень тихо
-			testSound.play().then(() => {
-				console.log('[ЗВУК] ✅ Тестовый звук сыграл');
-				testSound.pause();
-				testSound.currentTime = 0;
-			}).catch(e => {
-				console.log('[ЗВУК] Тестовый звук не сработал:', e.message);
-				// Флаг уже включён выше, так что звуки всё равно будут работать
-			});            
+            // 3. Проигрываем тихий тестовый звук
+            const testSound = new Audio('/tormazi.wav');
+            testSound.volume = 0.01; // очень тихо
+            testSound.play().then(() => {
+                console.log('[ЗВУК] ✅ Тестовый звук сыграл');
+                testSound.pause();
+                testSound.currentTime = 0;
+            }).catch(e => {
+                console.log('[ЗВУК] Тестовый звук не сработал:', e.message);
+            });            
 
-            // 3. Удаляем обработчики после первого раза
+            // 4. Удаляем обработчики после первого раза
             document.removeEventListener('touchstart', unlock);
             document.removeEventListener('touchend', unlock);
             document.removeEventListener('click', unlock);
@@ -406,50 +405,59 @@ function scheduleChartUpdate() {
     }, getUpdateInterval());
 }
 
+// ============================================
+// 7. ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ГРАФИКА
+// ============================================
 function performChartUpdate() {
     const desiredPoints = state.currentRange;
     const totalPoints = state.dataBuffer.count;
     
+    // Убеждаемся, что массивы данных существуют и нужной длины
     if (!state.chart.data.labels || state.chart.data.labels.length !== desiredPoints) {
         state.chart.data.labels = new Array(desiredPoints).fill('');
+        // Также сбрасываем данные датасетов при изменении размера
+        state.chart.data.datasets.forEach(ds => ds.data = new Array(desiredPoints).fill(null));
     }
-    
-    const datasets = [
-        new Array(desiredPoints).fill(null),
-        new Array(desiredPoints).fill(null),
-        new Array(desiredPoints).fill(null),
-        new Array(desiredPoints).fill(null),
-        new Array(desiredPoints).fill(null)
-    ];
     
     const baseTemp = state.lastValues.baseTemp;
     const availableData = Math.min(totalPoints, desiredPoints);
     
+    // Обновляем только последние availableData точек (справа)
     for (let i = 0; i < availableData; i++) {
         const dataIdx = (state.dataBuffer.index - availableData + i + CONFIG.MAX_POINTS) % CONFIG.MAX_POINTS;
         const chartIdx = desiredPoints - availableData + i;
         
+        // Обновляем метку времени
         if (state.dataBuffer.time[dataIdx]) {
             state.chart.data.labels[chartIdx] = state.dataBuffer.time[dataIdx];
         }
         
-        datasets[0][chartIdx] = state.dataBuffer.guild[dataIdx];
-        datasets[1][chartIdx] = state.dataBuffer.wall50[dataIdx];
-        datasets[2][chartIdx] = state.dataBuffer.wall75[dataIdx];
-        datasets[3][chartIdx] = state.dataBuffer.wall100[dataIdx];
-        datasets[4][chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
+        // Обновляем данные всех датасетов
+        state.chart.data.datasets[0].data[chartIdx] = state.dataBuffer.guild[dataIdx];
+        state.chart.data.datasets[1].data[chartIdx] = state.dataBuffer.wall50[dataIdx];
+        state.chart.data.datasets[2].data[chartIdx] = state.dataBuffer.wall75[dataIdx];
+        state.chart.data.datasets[3].data[chartIdx] = state.dataBuffer.wall100[dataIdx];
+        state.chart.data.datasets[4].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
     }
     
-    state.chart.data.datasets.forEach((dataset, i) => {
-        dataset.data = datasets[i];
-    });
+    // Очищаем "левую" часть, если она стала пустой (например, при смене масштаба)
+    for (let i = 0; i < desiredPoints - availableData; i++) {
+        state.chart.data.labels[i] = '';
+        state.chart.data.datasets[0].data[i] = null;
+        state.chart.data.datasets[1].data[i] = null;
+        state.chart.data.datasets[2].data[i] = null;
+        state.chart.data.datasets[3].data[i] = null;
+        state.chart.data.datasets[4].data[i] = null;
+    }
     
+    // Просим Chart.js перерисовать только измененные данные
     state.chart.update();
+    
     dom.updateDebugInfo();
 }
 
 // ============================================
-// 7. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
+// 8. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
 // ============================================
 function updateModeDisplay(mode, color, timeStr, baseTemp) {
     const modeDisplay = dom.get('modeDisplay');
@@ -527,7 +535,7 @@ function processData(data) {
 }
 
 // ============================================
-// 8. WEBSOCKET С WATCHDOG
+// 9. WEBSOCKET С WATCHDOG
 // ============================================
 function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
@@ -647,7 +655,7 @@ function connectWebSocket() {
 }
 
 // ============================================
-// 9. УПРАВЛЕНИЕ МАСШТАБОМ
+// 10. УПРАВЛЕНИЕ МАСШТАБОМ
 // ============================================
 function setupControls() {
     document.querySelectorAll('.scale-btn').forEach(btn => {
@@ -691,7 +699,7 @@ function setupControls() {
 }
 
 // ============================================
-// 10. ВОССТАНОВЛЕНИЕ ПОСЛЕ СВОРАЧИВАНИЯ
+// 11. ВОССТАНОВЛЕНИЕ ПОСЛЕ СВОРАЧИВАНИЯ
 // ============================================
 function setupVisibilityHandler() {
     document.addEventListener('visibilitychange', () => {
@@ -708,7 +716,7 @@ function setupVisibilityHandler() {
 }
 
 // ============================================
-// 11. ОЧИСТКА ПРИ ВЫХОДЕ
+// 12. ОЧИСТКА ПРИ ВЫХОДЕ
 // ============================================
 function setupCleanup() {
     window.addEventListener('beforeunload', () => {
@@ -723,7 +731,7 @@ function setupCleanup() {
 }
 
 // ============================================
-// 12. ЗАПУСК
+// 13. ЗАПУСК
 // ============================================
 window.onload = function() {
     initChart();

@@ -21,7 +21,10 @@
 #include <DNSServer.h>
 #include <WiFiManager.h>
 #include <WebSocketsServer.h>
-#include <ESPAsyncWebServer.h>
+// #include "ESPAsyncWebServer.h" // V-3.10.0
+#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h" // V-3.10.0
+
+
 #include <LittleFS.h>
 #include <ESPmDNS.h>          // ДЛЯ mDNS (доступ по имени)
 
