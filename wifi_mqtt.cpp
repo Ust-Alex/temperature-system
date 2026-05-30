@@ -2,14 +2,11 @@
  * ============================================================================
  * @file wifi_mqtt.cpp
  * @brief Веб-сервер + WebSocket + WiFiManager + mDNS
- * @version 3.1
+ * @version 3.2 (ИЗМЕНЕНА: отправка 0.00 для гильзы при отсутствии датчика)
  * 
- * ОСОБЕННОСТИ:
- * - WiFiManager для подключения к роутеру (режим STA)
- * - mDNS для доступа по имени http://esp32ust.local
- * - Веб-сервер на порту 80 отдаёт index.html из LittleFS
- * - WebSocket на порту 8080 передаёт данные в реальном времени
- * - Кнопка BOOT (GPIO0) для сброса настроек WiFi
+ * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
+ * - В JSON для поля "guild" при отсутствии датчика гильзы передаётся 0.00
+ * - Это предотвращает отправку служебных значений (-888, -777) на веб-страницу
  * ============================================================================
  */
 
@@ -23,7 +20,6 @@
 #include <WebSocketsServer.h>
 // #include "ESPAsyncWebServer.h" // V-3.10.0
 #include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h" // V-3.10.0
-
 
 #include <LittleFS.h>
 #include <ESPmDNS.h>          // ДЛЯ mDNS (доступ по имени)
@@ -55,7 +51,20 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
   float t0 = sensors[0].temp;  // 100см
   float t1 = sensors[1].temp;  // 75см
   float t2 = sensors[2].temp;  // 50см
-  float t3 = sensors[3].temp;  // гильза
+  
+  // ========================================================================
+  // ИЗМЕНЕНИЕ: для гильзы (sensors[3]) проверяем наличие датчика
+  // Если датчик не найден — отправляем 0.00, иначе — его температуру
+  // Это предотвращает отправку на веб-страницу значений TEMP_NO_DATA (-999)
+  // или TEMP_CRITICAL_LOST (-777)
+  // ========================================================================
+  float t3;
+  if (sensors[3].found) {
+    t3 = sensors[3].temp;
+  } else {
+    t3 = 0.0f;   // веб-страница покажет 0.00
+  }
+  
   int mode = sysData.mode;
   int color = guildColorState;
   

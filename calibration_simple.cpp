@@ -1,7 +1,12 @@
 /**
  * @file calibration_simple.cpp
  * @brief Калибровка через offset. Все данные в EEPROM, локальных дублей нет.
- * @version 2.1
+ * @version 3.0 (ИЗМЕНЕНА: ЗАПРЕТ КАЛИБРОВКИ ПРИ ОТСУТСТВИИ ДАТЧИКА ГИЛЬЗЫ)
+ * 
+ * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
+ * - autoCalibrateAllSensors() проверяет наличие гильзы перед выполнением
+ * - setReferenceSensor() не позволяет выбрать гильзу в качестве эталона, если датчик отсутствует
+ * - Остальные функции безопасны и не требуют изменений
  */
 
 #include "calibration_simple.h"
@@ -17,6 +22,16 @@ void calibration_init() {
 
 // ============================================================================
 void autoCalibrateAllSensors() {
+    // ========================================================================
+    // ИЗМЕНЕНИЕ: ПРОВЕРКА НАЛИЧИЯ ДАТЧИКА ГИЛЬЗЫ
+    // Если датчик гильзы отсутствует, автокалибровка бессмысленна.
+    // Выводим сообщение в Serial и выходим.
+    // ========================================================================
+    if (!sensors[3].found) {
+        Serial.println("[CALIB] Невозможно выполнить авто-калибровку: датчик гильзы отсутствует");
+        return;
+    }
+    
     int ref = settings_get_reference();
     if (!sensors[ref].found) {
         Serial.println("[CALIB] Ошибка: эталон не найден");
@@ -48,10 +63,27 @@ void setManualOffset(int idx, float offset) {
 
 // ============================================================================
 void setReferenceSensor(int idx) {
-    if (idx < 0 || idx >= 4 || !sensors[idx].found) {
-        Serial.println("[CALIB] Ошибка: датчик не найден");
+    if (idx < 0 || idx >= 4) {
+        Serial.println("[CALIB] Ошибка: индекс должен быть 0-3");
         return;
     }
+    
+    if (!sensors[idx].found) {
+        Serial.printf("[CALIB] Ошибка: датчик [%d] не найден\n", idx);
+        return;
+    }
+    
+    // ========================================================================
+    // ИЗМЕНЕНИЕ: ЗАПРЕТ ВЫБОРА ГИЛЬЗЫ В КАЧЕСТВЕ ЭТАЛОНА ПРИ ОТСУТСТВИИ ДАТЧИКА
+    // Если индекс == 3 (гильза) и датчик отсутствует — запрещаем.
+    // (Хотя проверка sensors[idx].found выше уже отсекла бы этот случай, 
+    //  но добавляем явную проверку для ясности и страховки)
+    // ========================================================================
+    if (idx == 3 && !sensors[3].found) {
+        Serial.println("[CALIB] Нельзя выбрать гильзу в качестве эталона: датчик не найден");
+        return;
+    }
+    
     settings_set_reference(idx);
     settings_set_offset(idx, 0.0f);
     settings_save();
@@ -89,6 +121,9 @@ void printCalibrationStatus() {
             float cal = applyCalibration(i, raw);
             Serial.printf("  [%d] %s: %.2f -> %.2f (offset %+.2f)\n",
                 i, sensorNames[i], raw, cal, settings_get_offset(i));
+        } else {
+            // Для отсутствующих датчиков просто выводим сообщение
+            Serial.printf("  [%d] %s: ДАТЧИК НЕ НАЙДЕН\n", i, sensorNames[i]);
         }
     }
     Serial.println(String(40, '='));

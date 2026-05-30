@@ -3,15 +3,12 @@
  * ФАЙЛ: measurement_task.cpp
  * ЗАДАЧА ИЗМЕРЕНИЙ ТЕМПЕРАТУРЫ (ВЫДЕЛЕНА В ОТДЕЛЬНЫЙ МОДУЛЬ)
  * 
- * ВЕРСИЯ: 2.0 (С ДОБАВЛЕННЫМ ОБНОВЛЕНИЕМ ЗВУКОВ ЖЁЛТОГО РЕЖИМА)
+ * ВЕРСИЯ: 3.0 (ИЗМЕНЕНА: РАБОТАЕТ БЕЗ ДАТЧИКА ГИЛЬЗЫ)
  * 
- * ОСОБЕННОСТИ:
- * 1. Работает как отдельная задача FreeRTOS
- * 2. Использует модуль sensors для опроса датчиков
- * 3. Рассчитывает дельты температур
- * 4. Отправляет данные в очередь для дисплея
- * 5. Обновляет таймер стабилизации MODE1
- * 6. Обновляет звуки в жёлтом режиме MODE2
+ * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
+ * - УБРАНА блокирующая проверка if (!systemInitialized)
+ * - При отсутствии гильзы в sysData.temps[3] записывается TEMP_NO_DATA
+ * - Для остальных датчиков логика не изменилась
  * ============================================================================
  */
 
@@ -21,7 +18,7 @@
 #include "sensors.h"
 #include "mode1_logic.h"
 #include "mode2_logic.h"
-#include "mode2_sounds.h"   // ДОБАВЛЕНО для обновления звуков в жёлтом режиме
+#include "mode2_sounds.h"
 
 // ============================================================================
 // ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ МОДУЛЯ
@@ -49,7 +46,16 @@ void measurement_update_delta() {
         }
         lastTemps[i] = sensors[i].temp;
       } else {
-        float errTemp = (i == 3) ? TEMP_CRITICAL_LOST : TEMP_SENSOR_LOST;
+        // ================================================================
+        // ИЗМЕНЕНИЕ: для гильзы (i==3) используем TEMP_NO_DATA вместо TEMP_CRITICAL_LOST
+        // Это гарантирует, что на дисплее покажется "--.--"
+        // ================================================================
+        float errTemp;
+        if (i == 3) {
+          errTemp = TEMP_NO_DATA;           // "--.--" на дисплее
+        } else {
+          errTemp = TEMP_SENSOR_LOST;        // пустое место на дисплее (как было)
+        }
         safeUpdateSystemData(i, errTemp, 0.0f);
       }
     }
@@ -60,7 +66,12 @@ void measurement_update_delta() {
       if (sensors[i].found && sensors[i].temp != TEMP_NO_DATA) {
         safeUpdateSystemData(i, sensors[i].temp, sysData.deltas[i]);
       } else {
-        float errTemp = (i == 3) ? TEMP_CRITICAL_LOST : TEMP_SENSOR_LOST;
+        float errTemp;
+        if (i == 3) {
+          errTemp = TEMP_NO_DATA;
+        } else {
+          errTemp = TEMP_SENSOR_LOST;
+        }
         safeUpdateSystemData(i, errTemp, 0.0f);
       }
     }
@@ -93,7 +104,6 @@ void taskMeasure(void* pvParameters) {
   Serial.println("📡 Задача измерений запущена (отдельный модуль)");
 
   while (1) {
-    // Фиксируем начало цикла для точного интервала
     TickType_t cycleStartTime = xTaskGetTickCount();
     uint32_t currentMillis = millis();
     measurementCount++;
@@ -101,7 +111,7 @@ void taskMeasure(void* pvParameters) {
     // ========================================================================
     // 1. HEARTBEAT ДЛЯ ОТЛАДКИ (раз в 30 секунд)
     // ========================================================================
-    if (currentMillis - lastHeartbeat > 30000) {  // 30 секунд
+    if (currentMillis - lastHeartbeat > 30000) {
       // Serial.printf("[MEASURE] Heartbeat: %lu ms, измерений: %lu\n",
       //               currentMillis, measurementCount);
       lastHeartbeat = currentMillis;
@@ -110,10 +120,10 @@ void taskMeasure(void* pvParameters) {
     // ========================================================================
     // 2. ПРОВЕРКА ИНИЦИАЛИЗАЦИИ СИСТЕМЫ
     // ========================================================================
-    if (!systemInitialized) {
-      vTaskDelay(pdMS_TO_TICKS(MEASURE_INTERVAL));
-      continue;
-    }
+    // ИЗМЕНЕНИЕ: проверка УДАЛЕНА.
+    // Раньше здесь было if (!systemInitialized) { vTaskDelay(...); continue; }
+    // Теперь задача измерений работает ВСЕГДА, даже без гильзы.
+    // ========================================================================
 
     // ========================================================================
     // 3. ОПРОС ДАТЧИКОВ ЧЕРЕЗ МОДУЛЬ SENSORS
@@ -133,6 +143,8 @@ void taskMeasure(void* pvParameters) {
     // ========================================================================
     // 6. ОБНОВЛЕНИЕ ТАЙМЕРА СТАБИЛИЗАЦИИ ДЛЯ MODE1
     // ========================================================================
+    // ИЗМЕНЕНИЕ: добавлена проверка наличия гильзы
+    // (сама функция mode1_update_stabilization_timer будет изменена отдельно)
     if (sysData.mode == 0 && sensors[3].found) {
       mode1_update_stabilization_timer(sensors[3].temp);
     }
@@ -140,15 +152,18 @@ void taskMeasure(void* pvParameters) {
     // ========================================================================
     // 7. ОБНОВЛЕНИЕ ЦВЕТОВОГО СОСТОЯНИЯ ДЛЯ MODE2
     // ========================================================================
+    // ИЗМЕНЕНИЕ: добавлена проверка наличия гильзы
+    // (сама функция mode2_update_color_state будет изменена отдельно)
     if (sysData.mode == 1 && sensors[3].found) {
       mode2_update_color_state(sensors[3].temp);
     }
 
     // ========================================================================
-    // 8. ОБНОВЛЕНИЕ ЗВУКОВ В ЖЁЛТОМ РЕЖИМЕ (ДОБАВЛЕНО)
+    // 8. ОБНОВЛЕНИЕ ЗВУКОВ В ЖЁЛТОМ РЕЖИМЕ
     // ========================================================================
-    if (sysData.mode == 1) {
-      mode2_sounds_update();  // Проверяем, не пора ли сыграть следующий звук в жёлтом
+    // ИЗМЕНЕНИЕ: добавлена проверка наличия гильзы
+    if (sysData.mode == 1 && sensors[3].found) {
+      mode2_sounds_update();
     }
 
     // ========================================================================

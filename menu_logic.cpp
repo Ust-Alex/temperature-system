@@ -1,7 +1,12 @@
 /**
  * @file menu_logic.cpp
  * @brief ЛОГИКА МЕНЮ (С ДОБАВЛЕННЫМ BACK)
- * @version 2.3
+ * @version 3.0 (ИЗМЕНЕНА: ЗАПРЕТ ПЕРЕКЛЮЧЕНИЯ В MODE2 ПРИ ОТСУТСТВИИ ГИЛЬЗЫ)
+ * 
+ * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
+ * - При попытке переключиться в MODE2 проверяется наличие датчика гильзы
+ * - Если гильза отсутствует, переключение игнорируется (без сообщений)
+ * - Пункт меню MODE2 остаётся видимым, но не активным для выбора
  */
 
 #include "menu_engine.h"
@@ -68,7 +73,7 @@ void menu_handle_event(EncoderEvent_t event) {
             if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
                 uint8_t old = selectedItem;
                 if (event == EVENT_ENCODER_RIGHT) {
-                    selectedItem = (selectedItem + 1) % 5;  // ТЕПЕРЬ 5 ПУНКТОВ
+                    selectedItem = (selectedItem + 1) % 5;
                 } else {
                     selectedItem = (selectedItem == 0) ? 4 : selectedItem - 1;
                 }
@@ -115,9 +120,16 @@ void menu_handle_event(EncoderEvent_t event) {
                     newItem = (selectedItem == 0) ? 3 : selectedItem - 1;
                 }
 
+                // ================================================================
+                // ИЗМЕНЕНИЕ: проверка доступности MODE2
+                // Пункт 2 (MODE2) считается недоступным, если датчик гильзы отсутствует
+                // ================================================================
                 bool available = true;
                 if (sysData.mode == 0 && newItem == 1) available = false;
                 if (sysData.mode == 1 && newItem == 2) available = false;
+                
+                // ДОБАВЛЕНО: если пытаемся выбрать MODE2 (пункт 2), а гильзы нет — недоступно
+                if (newItem == 2 && !sensors[3].found) available = false;
 
                 if (!available) {
                     uint8_t secondItem;
@@ -129,6 +141,8 @@ void menu_handle_event(EncoderEvent_t event) {
                     bool secondAvailable = true;
                     if (sysData.mode == 0 && secondItem == 1) secondAvailable = false;
                     if (sysData.mode == 1 && secondItem == 2) secondAvailable = false;
+                    if (secondItem == 2 && !sensors[3].found) secondAvailable = false;
+                    
                     if (secondAvailable) {
                         newItem = secondItem;
                     } else {
@@ -148,6 +162,17 @@ void menu_handle_event(EncoderEvent_t event) {
                     drawMenuTop(0);
                 } else if (selectedItem == 1 || selectedItem == 2) {
                     uint8_t newMode = (selectedItem == 1) ? 0 : 1;
+                    
+                    // ============================================================
+                    // ИЗМЕНЕНИЕ: при попытке переключиться в MODE2 проверяем наличие гильзы
+                    // Если гильзы нет — переключение игнорируется (без звука, без сообщений)
+                    // ============================================================
+                    if (newMode == 1 && !sensors[3].found) {
+                        // Молча игнорируем попытку переключения в MODE2
+                        // Никаких сообщений на дисплей или в Serial
+                        return;
+                    }
+                    
                     if (newMode != sysData.mode) {
                         selectedMode = newMode;
                         modeConfirmed = true;
