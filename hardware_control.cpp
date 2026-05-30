@@ -57,7 +57,12 @@ void initHardware() {
   tft.setTextFont(FONT_DELTA);
   tft.setCursor(5, 100);
   tft.print("esp32ust.local");
-  delay(3000);
+  tft.setCursor(5, 150);
+  tft.print("192.168.1.11");
+  
+  
+  
+  delay(10000);
 
   // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE И ДАТЧИКОВ
   Serial.println("Инициализация шин 1-Wire...");

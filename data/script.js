@@ -1,32 +1,45 @@
+/**
+ * ============================================================================
+ * ФАЙЛ: script.js
+ * ВЕБ-ИНТЕРФЕЙС ДЛЯ СИСТЕМЫ КОНТРОЛЯ ТЕМПЕРАТУРЫ
+ * 
+ * ВЕРСИЯ: 5.2 (ПРИНУДИТЕЛЬНАЯ СИНХРОНИЗАЦИЯ ГРАФИКА)
+ * 
+ * ОСОБЕННОСТИ:
+ * - График обновляется строго раз в секунду по независимому таймеру
+ * - Карточки температур обновляются мгновенно
+ * - Данные буферизуются и применяются к графику синхронно
+ * - Полное устранение "пиков" при нестабильном WiFi
+ * ============================================================================
+ */
+
 // ============================================
 // 1. КОНФИГУРАЦИЯ
 // ============================================
 const CONFIG = {
     MAX_POINTS: 7200,
     WS_URL: 'ws://' + window.location.hostname + ':8080',
-    MEASURE_INTERVAL: 1166,              // реальный интервал данных от ESP (мс)
-    CHART_UPDATE_INTERVAL: 1166,          // синхронно с данными (мс)
-    FAST_UPDATE_RANGES: [120],            // только для 1-минутного масштаба
-    FAST_UPDATE_INTERVAL: 583,             // ~половина для плавности на 1м (мс)
+    MEASURE_INTERVAL: 1166,
+    CHART_SYNC_INTERVAL: 1000,           // Строго 1 секунда (принудительный таймер)
+    FAST_UPDATE_INTERVAL: 500,
     RANGES: {
-        '1ч': 7200,
-        '30м': 3600,
-        '15м': 1800,
-        '5м': 600,
-        '1м': 120
+        '1ч': 3600,
+        '30м': 1800,
+        '15м': 900,
+        '5м': 300,
+        '1м': 60
     },
+    FAST_UPDATE_RANGES: [60],
     RECONNECT: {
-        MAX_ATTEMPTS: 5,                   // попыток до красного индикатора
-        DELAYS: [1, 2, 4, 8, 15, 30, 30, 30, 30, 30],  // задержки между попытками (сек)
-        MAX_DELAY: 30,                      // максимальная задержка (сек)
-        MAX_TOTAL_ATTEMPTS: 20,            // максимум попыток перед остановкой
-        WATCHDOG_INTERVAL: 5000             // проверка каждые 5 секунд (мс)
+        MAX_ATTEMPTS: 5,
+        MAX_TOTAL_ATTEMPTS: 20,
+        DELAYS: [1, 2, 4, 8, 15, 30, 30, 30, 30, 30],
+        WATCHDOG_INTERVAL: 5000
     },
     WATCHDOG: {
-        PING_INTERVAL: 10000,               // пинг каждые 10 секунд (мс)
-        DATA_TIMEOUT: 15000                  // если нет данных 15 сек - обрыв (мс)
+        PING_INTERVAL: 10000,
+        DATA_TIMEOUT: 15000
     },
-    // ДОБАВЛЕНО: Границы для зума
     ZOOM_LIMITS: {
         MIN_TEMP: 20,
         MAX_TEMP: 90,
@@ -42,11 +55,15 @@ const state = {
     reconnectAttempts: 0,
     reconnectTimeout: null,
     watchdogTimer: null,
-    pingTimer: null,
+    reconnectStopped: false,
     lastDataTime: Date.now(),
     pageVisible: true,
-    reconnectStopped: false,
     
+    // БУФЕРИЗАЦИЯ ДЛЯ СИНХРОНИЗАЦИИ ГРАФИКА
+    pendingData: null,
+    chartUpdateTimer: null,
+    
+    // БУФЕР ИСТОРИИ (кольцевой массив)
     dataBuffer: {
         time: new Array(CONFIG.MAX_POINTS).fill(''),
         guild: new Array(CONFIG.MAX_POINTS).fill(null),
@@ -66,14 +83,12 @@ const state = {
         temps: [null, null, null, null]
     },
     
-    currentRange: 120,
-    chartUpdateTimer: null,
-    pendingChartUpdate: false,
+    currentRange: 60,
     chart: null
 };
 
 // ============================================
-// 3. ЗВУКИ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+// 3. ЗВУКОВОЕ СОПРОВОЖДЕНИЕ
 // ============================================
 const soundManager = {
     tormazi: new Audio('/tormazi.wav'),
@@ -84,53 +99,25 @@ const soundManager = {
     audioContext: null,
     
     init() {
-        console.log('[ЗВУК] Инициализация, ожидание взаимодействия...');
-        
-        // Создаём AudioContext заранее
+        console.log('[ЗВУК] Инициализация...');
         try {
             const AudioCtor = window.AudioContext || window.webkitAudioContext;
             if (AudioCtor) {
                 this.audioContext = new AudioCtor();
-                console.log('[ЗВУК] AudioContext создан, состояние:', this.audioContext.state);
             }
-        } catch(e) {
-            console.log('[ЗВУК] AudioContext не поддерживается');
-        }
+        } catch(e) {}
         
-        // Универсальная функция разблокировки
         const unlock = () => {
-            console.log('[ЗВУК] Попытка разблокировки...');
-            
-            // 1. Разблокируем AudioContext
             if (this.audioContext && this.audioContext.state === 'suspended') {
-                this.audioContext.resume().then(() => {
-                    console.log('[ЗВУК] AudioContext разблокирован');
-                });
+                this.audioContext.resume();
             }
-
-            // 2. ПРИНУДИТЕЛЬНО включаем флаг разрешения звука
             this.audioEnabled = true;
-            console.log('[ЗВУК] Флаг audioEnabled принудительно установлен');
-
-            // 3. Проигрываем тихий тестовый звук
-            const testSound = new Audio('/tormazi.wav');
-            testSound.volume = 0.01; // очень тихо
-            testSound.play().then(() => {
-                console.log('[ЗВУК] ✅ Тестовый звук сыграл');
-                testSound.pause();
-                testSound.currentTime = 0;
-            }).catch(e => {
-                console.log('[ЗВУК] Тестовый звук не сработал:', e.message);
-            });            
-
-            // 4. Удаляем обработчики после первого раза
             document.removeEventListener('touchstart', unlock);
             document.removeEventListener('touchend', unlock);
             document.removeEventListener('click', unlock);
             document.removeEventListener('keydown', unlock);
         };
         
-        // Вешаем на все возможные события
         document.addEventListener('touchstart', unlock, { once: true });
         document.addEventListener('touchend', unlock, { once: true });
         document.addEventListener('click', unlock, { once: true });
@@ -138,22 +125,9 @@ const soundManager = {
     },
     
     play(sound) {
-        if (!sound) return;
-        
-        if (!this.audioEnabled) {
-            console.log('[ЗВУК] Звук заблокирован, ждём взаимодействия');
-            return;
-        }
-        
+        if (!sound || !this.audioEnabled) return;
         sound.currentTime = 0;
-        sound.play().catch(e => {
-            console.log('[ЗВУК] Ошибка воспроизведения:', e.message);
-            // Если ошибка из-за блокировки, пробуем переразрешить
-            if (e.name === 'NotAllowedError') {
-                this.audioEnabled = false;
-                this.init(); // перезапускаем ожидание
-            }
-        });
+        sound.play().catch(e => {});
     },
     
     stopAll() {
@@ -162,34 +136,27 @@ const soundManager = {
             this.interval = null;
         }
         this.yellowCycleState = false;
-        console.log('[ЗВУК] Все циклы остановлены');
     },
     
     startYellowCycle() {
         this.stopAll();
-        console.log('[ЗВУК] Запуск жёлтого цикла');
         this.yellowCycleState = false;
-        
         this.interval = setInterval(() => {
             this.play(this.yellowCycleState ? this.tormazi : this.zhdati);
-            console.log(`[ЗВУК] Жёлтый цикл: ${this.yellowCycleState ? 'tormazi' : 'zhdati'}`);
             this.yellowCycleState = !this.yellowCycleState;
         }, 60000);
     },
     
     startRedCycle() {
         this.stopAll();
-        console.log('[ЗВУК] Запуск красного цикла');
-        
         this.interval = setInterval(() => {
             this.play(this.tormazi);
-            console.log('[ЗВУК] Красный цикл: tormazi');
         }, 30000);
     }
 };
 
 // ============================================
-// 4. УТИЛИТЫ ДЛЯ РАБОТЫ С DOM
+// 4. DOM УТИЛИТЫ
 // ============================================
 const dom = {
     get: (id) => document.getElementById(id),
@@ -222,7 +189,6 @@ const dom = {
     updateCard(cardId, value, index) {
         const card = this.get(cardId);
         if (!card) return;
-        
         const formatted = value.toFixed(2);
         if (card.textContent !== formatted) {
             card.textContent = formatted;
@@ -233,189 +199,54 @@ const dom = {
     updateDebugInfo() {
         this.get('debugBuffer').textContent = `${state.dataBuffer.count}/${CONFIG.MAX_POINTS}`;
         this.get('debugRange').textContent = state.currentRange;
-        
-        const buttonName = Object.keys(CONFIG.RANGES).find(
-            key => CONFIG.RANGES[key] === state.currentRange
-        ) || '?';
+        const buttonName = Object.keys(CONFIG.RANGES).find(k => CONFIG.RANGES[k] === state.currentRange) || '?';
         this.get('debugActive').textContent = buttonName;
         this.get('debugLastTime').textContent = state.dataBuffer.lastTime || '--:--:--';
     }
 };
 
 // ============================================
-// 5. ГРАФИК С ЗУМОМ ПО Y (ОБНОВЛЕНО)
+// 5. ГРАФИК (CHART.JS)
 // ============================================
 function initChart() {
     const ctx = dom.get('tempChart').getContext('2d');
     state.chart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: [],
-            datasets: [
-                { 
-                    label: 'Гильза', 
-                    data: [], 
-                    borderColor: '#00FF00', 
-                    borderWidth: 1.5,
-                    tension: 0.3, 
-                    pointRadius: 0,
-                    order: 1
-                },
-                { 
-                    label: '50см', 
-                    data: [], 
-                    borderColor: '#FFFF00', 
-                    borderWidth: 1.5,
-                    tension: 0.3, 
-                    pointRadius: 0,
-                    order: 2
-                },
-                { 
-                    label: '75см', 
-                    data: [], 
-                    borderColor: '#00FFFF', 
-                    borderWidth: 1.5,
-                    tension: 0.3, 
-                    pointRadius: 0,
-                    order: 2
-                },
-                { 
-                    label: '100см', 
-                    data: [], 
-                    borderColor: '#FFA500', 
-                    borderWidth: 1.5,
-                    tension: 0.3, 
-                    pointRadius: 0,
-                    order: 2
-                },
-                { 
-                    label: 'База', 
-                    data: [], 
-                    borderColor: '#FF4500', 
-                    backgroundColor: '#FF4500',
-                    borderWidth: 1,
-                    tension: 0,
-                    pointRadius: function(context) {
-                        const index = context.dataIndex;
-                        return index % 8 === 0 ? 1 : 0;
-                    },
-                    pointHoverRadius: 4,
-                    pointStyle: 'circle',
-                    showLine: false,
-                    order: 0
-                }
-            ]
-        },
+        data: { labels: [], datasets: [
+            { label: 'Гильза', data: [], borderColor: '#00FF00', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 1 },
+            { label: '50см', data: [], borderColor: '#FFFF00', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 2 },
+            { label: '75см', data: [], borderColor: '#00FFFF', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 2 },
+            { label: '100см', data: [], borderColor: '#FFA500', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 2 },
+            { label: 'База', data: [], borderColor: '#FF4500', backgroundColor: '#FF4500', borderWidth: 1, tension: 0, pointRadius: ctx => ctx.dataIndex % 8 === 0 ? 1 : 0, showLine: false, order: 0 }
+        ] },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: { duration: 100 },
-            spanGaps: true,
-            elements: {
-                line: {
-                    tension: 0.3
-                }
-            },
+            responsive: true, maintainAspectRatio: false, animation: { duration: 100 }, spanGaps: true,
             scales: {
-                y: { 
-                    title: { display: false },
-                    min: 20,
-                    max: 90,
-                    grid: { color: '#333' },
-                    ticks: { 
-                        color: '#ccc',
-                        stepSize: 0.5,
-                        callback: v => v.toFixed(1)
-                    }
-                },
-                x: { 
-                    ticks: { 
-                        color: '#ccc', 
-                        maxTicksLimit: 8,
-                        callback: function(val) {
-                            const label = this.getLabelForValue(val);
-                            return label || '';
-                        }
-                    }
-                }
+                y: { min: CONFIG.ZOOM_LIMITS.MIN_TEMP, max: CONFIG.ZOOM_LIMITS.MAX_TEMP, grid: { color: '#333' }, ticks: { color: '#ccc', stepSize: 0.5, callback: v => v.toFixed(1) } },
+                x: { ticks: { color: '#ccc', maxTicksLimit: 8 } }
             },
-            plugins: { 
+            plugins: {
                 legend: { display: false },
                 zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'y',
-                        threshold: 5,
-                        onPan: function() {
-                            if (state.chart) {
-                                const yScale = state.chart.scales.y;
-                                dom.get('minTemp').value = yScale.min.toFixed(1);
-                                dom.get('maxTemp').value = yScale.max.toFixed(1);
-                            }
-                        }
-                    },
-                    zoom: {
-                        enabled: true,
-                        mode: 'y',
-                        pinch: { enabled: true },
-                        wheel: { enabled: false },
-                        onZoom: function() {
-                            if (state.chart) {
-                                const yScale = state.chart.scales.y;
-                                dom.get('minTemp').value = yScale.min.toFixed(1);
-                                dom.get('maxTemp').value = yScale.max.toFixed(1);
-                            }
-                        }
-                    },
-                    limits: {
-                        y: {
-                            min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
-                            max: CONFIG.ZOOM_LIMITS.MAX_TEMP,
-                            minRange: CONFIG.ZOOM_LIMITS.MIN_RANGE
-                        }
-                    }
+                    pan: { enabled: true, mode: 'y', threshold: 5, onPan: () => { if (state.chart) { const y = state.chart.scales.y; dom.get('minTemp').value = y.min.toFixed(1); dom.get('maxTemp').value = y.max.toFixed(1); } } },
+                    zoom: { wheel: { enabled: false }, pinch: { enabled: true }, mode: 'y', onZoom: () => { if (state.chart) { const y = state.chart.scales.y; dom.get('minTemp').value = y.min.toFixed(1); dom.get('maxTemp').value = y.max.toFixed(1); } } },
+                    limits: { y: { min: CONFIG.ZOOM_LIMITS.MIN_TEMP, max: CONFIG.ZOOM_LIMITS.MAX_TEMP, minRange: CONFIG.ZOOM_LIMITS.MIN_RANGE } }
                 }
             }
         }
     });
 }
 
-// ============================================
-// 6. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ГРАФИКА
-// ============================================
-function getUpdateInterval() {
-    if (CONFIG.FAST_UPDATE_RANGES.includes(state.currentRange)) {
-        return CONFIG.FAST_UPDATE_INTERVAL;
-    }
-    return CONFIG.CHART_UPDATE_INTERVAL;
-}
-
-function scheduleChartUpdate() {
-    if (state.pendingChartUpdate) return;
-    state.pendingChartUpdate = true;
-    
-    if (state.chartUpdateTimer) {
-        clearTimeout(state.chartUpdateTimer);
-    }
-    
-    state.chartUpdateTimer = setTimeout(() => {
-        performChartUpdate();
-        state.pendingChartUpdate = false;
-        state.chartUpdateTimer = null;
-    }, getUpdateInterval());
-}
-
-// ============================================
-// 7. ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ГРАФИКА
-// ============================================
+/**
+ * ОБНОВЛЕНИЕ ГРАФИКА ИЗ БУФЕРА ДАННЫХ
+ * Перерисовывает все линии графика одновременно
+ */
 function performChartUpdate() {
     const desiredPoints = state.currentRange;
     const totalPoints = state.dataBuffer.count;
     
-    // Убеждаемся, что массивы данных существуют и нужной длины
     if (!state.chart.data.labels || state.chart.data.labels.length !== desiredPoints) {
         state.chart.data.labels = new Array(desiredPoints).fill('');
-        // Также сбрасываем данные датасетов при изменении размера
         state.chart.data.datasets.forEach(ds => ds.data = new Array(desiredPoints).fill(null));
     }
     
@@ -427,12 +258,10 @@ function performChartUpdate() {
         const dataIdx = (state.dataBuffer.index - availableData + i + CONFIG.MAX_POINTS) % CONFIG.MAX_POINTS;
         const chartIdx = desiredPoints - availableData + i;
         
-        // Обновляем метку времени
         if (state.dataBuffer.time[dataIdx]) {
             state.chart.data.labels[chartIdx] = state.dataBuffer.time[dataIdx];
         }
         
-        // Обновляем данные всех датасетов
         state.chart.data.datasets[0].data[chartIdx] = state.dataBuffer.guild[dataIdx];
         state.chart.data.datasets[1].data[chartIdx] = state.dataBuffer.wall50[dataIdx];
         state.chart.data.datasets[2].data[chartIdx] = state.dataBuffer.wall75[dataIdx];
@@ -440,51 +269,53 @@ function performChartUpdate() {
         state.chart.data.datasets[4].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
     }
     
-    // Очищаем "левую" часть, если она стала пустой (например, при смене масштаба)
+    // Очищаем левую часть (при смене масштаба)
     for (let i = 0; i < desiredPoints - availableData; i++) {
         state.chart.data.labels[i] = '';
-        state.chart.data.datasets[0].data[i] = null;
-        state.chart.data.datasets[1].data[i] = null;
-        state.chart.data.datasets[2].data[i] = null;
-        state.chart.data.datasets[3].data[i] = null;
-        state.chart.data.datasets[4].data[i] = null;
+        state.chart.data.datasets.forEach(ds => ds.data[i] = null);
     }
     
-    // Просим Chart.js перерисовать только измененные данные
     state.chart.update();
-    
     dom.updateDebugInfo();
 }
 
+/**
+ * ЗАПИСЬ ДАННЫХ В БУФЕР ИСТОРИИ
+ */
+function commitDataToBuffer(data) {
+    if (!data) return;
+    
+    const now = new Date();
+    const timeLabel = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+    
+    state.dataBuffer.lastTime = timeLabel;
+    const idx = state.dataBuffer.index;
+    
+    state.dataBuffer.time[idx] = timeLabel;
+    state.dataBuffer.guild[idx] = data.guild;
+    state.dataBuffer.wall50[idx] = data.wall50;
+    state.dataBuffer.wall75[idx] = data.wall75;
+    state.dataBuffer.wall100[idx] = data.wall100;
+    
+    state.dataBuffer.index = (idx + 1) % CONFIG.MAX_POINTS;
+    if (state.dataBuffer.count < CONFIG.MAX_POINTS) state.dataBuffer.count++;
+}
+
 // ============================================
-// 8. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
+// 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА (карточки, режим, звук)
 // ============================================
 function updateModeDisplay(mode, color, timeStr, baseTemp) {
     const modeDisplay = dom.get('modeDisplay');
     if (!modeDisplay) return;
     
     const last = state.lastValues;
-    if (last.mode === mode && last.color === color && 
-        last.time === timeStr && last.baseTemp === baseTemp) {
-        return;
-    }
+    if (last.mode === mode && last.color === color && last.time === timeStr && last.baseTemp === baseTemp) return;
     
     if (color !== last.color) {
-        console.log(`[ЗВУК] Смена цвета: ${last.color} -> ${color}`);
-        
-        if (color === 1 || color === 2) {
-            soundManager.play(soundManager.tormazi);
-        }
-        
-        if (color === 1) {
-            soundManager.startYellowCycle();
-        } 
-        else if (color === 2) {
-            soundManager.startRedCycle();
-        } 
-        else if (color === 0) {
-            soundManager.stopAll();
-        }
+        if (color === 1 || color === 2) soundManager.play(soundManager.tormazi);
+        if (color === 1) soundManager.startYellowCycle();
+        else if (color === 2) soundManager.startRedCycle();
+        else if (color === 0) soundManager.stopAll();
     }
     
     let newText, newClass;
@@ -500,73 +331,53 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
     
     modeDisplay.className = newClass;
     modeDisplay.textContent = newText;
-    
     Object.assign(last, { mode, color, time: timeStr, baseTemp });
 }
 
+/**
+ * ОСНОВНАЯ ФУНКЦИЯ ОБРАБОТКИ ДАННЫХ ОТ ESP
+ * Карточки обновляются мгновенно, данные буферизуются для графика
+ */
 function processData(data) {
     state.lastDataTime = Date.now();
     
+    // 1. КАРТОЧКИ — МГНОВЕННО
     dom.updateCard('card0', data.guild, 0);
     dom.updateCard('card1', data.wall50, 1);
     dom.updateCard('card2', data.wall75, 2);
     dom.updateCard('card3', data.wall100, 3);
     
+    // 2. РЕЖИМ И ЦВЕТ — МГНОВЕННО
     updateModeDisplay(data.mode, data.color, data.time || '00:00', data.baseTemp);
     
-    const now = new Date();
-    const timeLabel = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-    
-    state.dataBuffer.lastTime = timeLabel;
-    const idx = state.dataBuffer.index;
-    
-    state.dataBuffer.time[idx] = timeLabel;
-    state.dataBuffer.guild[idx] = data.guild;
-    state.dataBuffer.wall50[idx] = data.wall50;
-    state.dataBuffer.wall75[idx] = data.wall75;
-    state.dataBuffer.wall100[idx] = data.wall100;
-    
-    state.dataBuffer.index = (idx + 1) % CONFIG.MAX_POINTS;
-    if (state.dataBuffer.count < CONFIG.MAX_POINTS) {
-        state.dataBuffer.count++;
-    }
-    
-    scheduleChartUpdate();
+    // 3. БУФЕРИЗАЦИЯ ДЛЯ ГРАФИКА (будет применена по таймеру)
+    state.pendingData = data;
 }
 
 // ============================================
-// 9. WEBSOCKET С WATCHDOG
+// 7. WEBSOCKET С WATCHDOG
 // ============================================
 function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
-    
     state.watchdogTimer = setInterval(() => {
         const timeSinceLastData = Date.now() - state.lastDataTime;
-        
         if (state.socket && state.socket.readyState === WebSocket.OPEN) {
             if (timeSinceLastData > CONFIG.WATCHDOG.DATA_TIMEOUT) {
-                console.log(`[WATCHDOG] Нет данных ${timeSinceLastData/1000}с, перезапуск сокета`);
+                console.log(`[WATCHDOG] Нет данных ${timeSinceLastData/1000}с`);
                 state.socket.close();
             }
         }
-        
         if (state.reconnectAttempts > CONFIG.RECONNECT.MAX_TOTAL_ATTEMPTS) {
-            console.log('[WATCHDOG] Слишком много попыток, остановка');
             state.reconnectStopped = true;
             dom.updateStatus('offline', state.reconnectAttempts);
-            if (state.reconnectTimeout) {
-                clearTimeout(state.reconnectTimeout);
-                state.reconnectTimeout = null;
-            }
+            if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
         }
     }, CONFIG.RECONNECT.WATCHDOG_INTERVAL);
 }
 
 function scheduleReconnect() {
     if (state.reconnectStopped) return;
-    
     state.reconnectAttempts++;
-    
     dom.updateStatus('offline', state.reconnectAttempts);
     
     const delays = CONFIG.RECONNECT.DELAYS;
@@ -575,14 +386,8 @@ function scheduleReconnect() {
     const delayMs = Math.max(1000, (baseDelay + jitter) * 1000);
     
     console.log(`[WS] Попытка ${state.reconnectAttempts}, через ${Math.round(delayMs/1000)}с`);
-    
-    if (state.reconnectTimeout) {
-        clearTimeout(state.reconnectTimeout);
-    }
-    
-    state.reconnectTimeout = setTimeout(() => {
-        connectWebSocket();
-    }, delayMs);
+    if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
+    state.reconnectTimeout = setTimeout(() => connectWebSocket(), delayMs);
 }
 
 function connectWebSocket() {
@@ -592,89 +397,75 @@ function connectWebSocket() {
             state.socket.onclose = null;
             state.socket.onerror = null;
             state.socket.onmessage = null;
-            if (state.socket.readyState !== WebSocket.CLOSED) {
-                state.socket.close();
-            }
-        } catch (e) {
-            console.log('[WS] Ошибка при очистке сокета:', e);
-        }
+            if (state.socket.readyState !== WebSocket.CLOSED) state.socket.close();
+        } catch(e) {}
     }
     
     dom.updateStatus('offline', state.reconnectAttempts + 1);
     
     try {
         state.socket = new WebSocket(CONFIG.WS_URL);
-    } catch (e) {
-        console.error('[WS] Ошибка создания сокета:', e);
+    } catch(e) {
+        console.error('[WS] Ошибка:', e);
         scheduleReconnect();
         return;
     }
     
     const connectionTimeout = setTimeout(() => {
         if (state.socket && state.socket.readyState === WebSocket.CONNECTING) {
-            console.log('[WS] Таймаут подключения');
+            console.log('[WS] Таймаут');
             state.socket.close();
         }
     }, 5000);
     
-    state.socket.onopen = function() {
+    state.socket.onopen = () => {
         clearTimeout(connectionTimeout);
-        console.log('[WS] Соединение установлено');
+        console.log('[WS] Подключено');
         dom.updateStatus('online');
         state.reconnectAttempts = 0;
         state.reconnectStopped = false;
         state.lastDataTime = Date.now();
-        
-        if (state.reconnectTimeout) {
-            clearTimeout(state.reconnectTimeout);
-            state.reconnectTimeout = null;
-        }
+        if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
     };
     
-    state.socket.onclose = function() {
+    state.socket.onclose = () => {
         clearTimeout(connectionTimeout);
-        console.log('[WS] Соединение закрыто');
+        console.log('[WS] Закрыто');
         scheduleReconnect();
     };
     
-    state.socket.onmessage = function(event) {
+    state.socket.onmessage = (event) => {
         state.lastDataTime = Date.now();
         try {
             processData(JSON.parse(event.data));
-        } catch (e) {
+        } catch(e) {
             console.error('[WS] Ошибка парсинга:', e);
         }
     };
     
-    state.socket.onerror = function(error) {
+    state.socket.onerror = (error) => {
         console.error('[WS] Ошибка:', error);
-        if (state.socket) {
-            state.socket.close();
-        }
+        if (state.socket) state.socket.close();
     };
 }
 
 // ============================================
-// 10. УПРАВЛЕНИЕ МАСШТАБОМ
+// 8. УПРАВЛЕНИЕ МАСШТАБОМ
 // ============================================
 function setupControls() {
     document.querySelectorAll('.scale-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const range = this.dataset.range;
             if (range && CONFIG.RANGES[range]) {
-                console.log(`[КНОПКА] Нажата ${range}`);
                 state.currentRange = CONFIG.RANGES[range];
-                
                 document.querySelectorAll('.scale-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                
                 performChartUpdate();
             }
         });
     });
     
     let minTimeout, maxTimeout;
-    
     dom.get('minTemp').addEventListener('input', function() {
         clearTimeout(minTimeout);
         minTimeout = setTimeout(() => {
@@ -698,47 +489,32 @@ function setupControls() {
     });
 }
 
-// ============================================
-// 11. ВОССТАНОВЛЕНИЕ ПОСЛЕ СВОРАЧИВАНИЯ
-// ============================================
 function setupVisibilityHandler() {
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-            state.pageVisible = false;
-        } else {
-            state.pageVisible = true;
-            console.log('[PAGE] Вкладка активна, проверка соединения');
-            if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
-                connectWebSocket();
-            }
+        if (!document.hidden && (!state.socket || state.socket.readyState !== WebSocket.OPEN)) {
+            console.log('[PAGE] Вкладка активна, переподключение...');
+            connectWebSocket();
         }
     });
 }
 
-// ============================================
-// 12. ОЧИСТКА ПРИ ВЫХОДЕ
-// ============================================
 function setupCleanup() {
     window.addEventListener('beforeunload', () => {
         if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
         if (state.chartUpdateTimer) clearTimeout(state.chartUpdateTimer);
         if (state.watchdogTimer) clearInterval(state.watchdogTimer);
-        
-        if (state.socket && state.socket.readyState === WebSocket.OPEN) {
-            state.socket.close();
-        }
+        if (state.socket && state.socket.readyState === WebSocket.OPEN) state.socket.close();
     });
 }
 
 // ============================================
-// 13. ЗАПУСК
+// 9. ЗАПУСК
 // ============================================
-window.onload = function() {
+window.onload = () => {
     initChart();
     setupControls();
     connectWebSocket();
     dom.updateDebugInfo();
-    
     soundManager.init();
     startWatchdog();
     setupVisibilityHandler();
@@ -746,5 +522,20 @@ window.onload = function() {
     
     state.lastDataTime = Date.now();
     
-    console.log('[SYSTEM] Запуск завершён, версия 4.0 (с зумом по Y)');
+    // ========================================
+    // ПРИНУДИТЕЛЬНЫЙ ТАЙМЕР ОБНОВЛЕНИЯ ГРАФИКА
+    // Обновляет график строго раз в секунду,
+    // независимо от прихода пакетов от ESP
+    // ========================================
+    setInterval(() => {
+        if (state.pendingData) {
+            // Если есть новые данные — записываем в буфер
+            commitDataToBuffer(state.pendingData);
+            state.pendingData = null;
+        }
+        // Обновляем график из буфера (все линии одновременно)
+        performChartUpdate();
+    }, CONFIG.CHART_SYNC_INTERVAL);
+    
+    console.log('[SYSTEM] Запуск версии 5.2 (принудительная синхронизация)');
 };
