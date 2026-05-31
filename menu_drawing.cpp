@@ -1,9 +1,11 @@
 /**
  * @file menu_drawing.cpp
- * @brief ГРАФИКА МЕНЮ (С ДОБАВЛЕННЫМ BACK)
+ * @brief ГРАФИКА МЕНЮ (С ДОБАВЛЕННЫМ WIFI)
  * @version 2.4
  */
 
+
+#include <WiFi.h>
 #include "menu_drawing.h"
 #include "globals.h"
 #include "sensors.h"
@@ -11,6 +13,7 @@
 #include "mode2_logic.h"
 #include "eeprom_settings.h"
 #include "calibration_simple.h"
+
 
 extern TFT_eSPI tft;
 extern float guildBaseTemp;
@@ -50,16 +53,16 @@ void showMessage(const char* msg, uint16_t delayMs) {
 }
 
 // ============================================================================
-// ВЕРХНЕЕ МЕНЮ (5 ПУНКТОВ)
+// ВЕРХНЕЕ МЕНЮ (6 ПУНКТОВ: MODE, WIFI, CALIB, SETTINGS, VOLUME, BACK)
 // ============================================================================
 void drawMenuTop(uint8_t selectedItem) {
     clearScreen(COLOR_BLACK);
     tft.setTextFont(FONT_DELTA);
 
-    const char* items[] = { "MODE", "VOLUME", "CALIB", "SETTINGS", "BACK" };
+    const char* items[] = { "MODE", "WIFI", "CALIB", "SETTINGS", "VOLUME", "BACK" };
     int y = 30;
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         uint16_t bg = (i == selectedItem) ? COLOR_WHITE : COLOR_BLACK;
         uint16_t fg = (i == selectedItem) ? COLOR_BLACK : COLOR_WHITE;
 
@@ -73,7 +76,7 @@ void drawMenuTop(uint8_t selectedItem) {
 }
 
 void updateMenuTopSelection(uint8_t oldItem, uint8_t newItem) {
-    const char* items[] = { "MODE", "VOLUME", "CALIB", "SETTINGS", "BACK" };
+    const char* items[] = { "MODE", "WIFI", "CALIB", "SETTINGS", "VOLUME", "BACK" };
     int yBase = 30;
     int step = 30;
 
@@ -226,6 +229,33 @@ void updateMenuModeSelection(uint8_t currentItem, uint8_t currentSelectedMode, b
     }
 }
 
+void drawWiFiInfoScreen() {
+    clearScreen(COLOR_BLACK);
+    tft.setTextFont(FONT_DELTA);
+    tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+
+    tft.setCursor(20, 40);
+    tft.print("SSID: ");
+    tft.setCursor(20, 70);
+    if (WiFi.status() == WL_CONNECTED) {
+        tft.println(WiFi.SSID());
+    } else {
+        tft.println("Not connected");
+    }
+
+    tft.setCursor(20, 110);
+    tft.print("IP:   ");
+    tft.setCursor(20, 140);
+    if (WiFi.status() == WL_CONNECTED) {
+        tft.println(WiFi.localIP().toString());
+    } else {
+        tft.println("0.0.0.0");
+    }
+
+    // Подсказка
+    tft.setCursor(20, 190);
+    tft.print("Press to exit");
+}
 // ============================================================================
 // ЭКРАН ГРОМКОСТИ (VOLUME)
 // ============================================================================
@@ -440,3 +470,4 @@ void drawCalibStatus() {
     tft.setCursor(100, 208);
     tft.print("BACK");
 }
+

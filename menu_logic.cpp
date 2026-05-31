@@ -1,12 +1,15 @@
 /**
  * @file menu_logic.cpp
- * @brief ЛОГИКА МЕНЮ (С ДОБАВЛЕННЫМ BACK)
- * @version 3.0 (ИЗМЕНЕНА: ЗАПРЕТ ПЕРЕКЛЮЧЕНИЯ В MODE2 ПРИ ОТСУТСТВИИ ГИЛЬЗЫ)
+ * @brief ЛОГИКА МЕНЮ (С ДОБАВЛЕННЫМ WIFI)
+ * @version 3.2 (ДОБАВЛЕНЫ НОВЫЕ ИНДЕКСЫ И MENU_STATE_WIFI)
  * 
- * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
- * - При попытке переключиться в MODE2 проверяется наличие датчика гильзы
- * - Если гильза отсутствует, переключение игнорируется (без сообщений)
- * - Пункт меню MODE2 остаётся видимым, но не активным для выбора
+ * ИНДЕКСЫ ГЛАВНОГО МЕНЮ:
+ * 0 - MODE
+ * 1 - WIFI
+ * 2 - CALIB
+ * 3 - SETTINGS
+ * 4 - VOLUME
+ * 5 - BACK
  */
 
 #include "menu_engine.h"
@@ -73,9 +76,9 @@ void menu_handle_event(EncoderEvent_t event) {
             if (event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
                 uint8_t old = selectedItem;
                 if (event == EVENT_ENCODER_RIGHT) {
-                    selectedItem = (selectedItem + 1) % 5;
+                    selectedItem = (selectedItem + 1) % 6;  // 6 пунктов
                 } else {
-                    selectedItem = (selectedItem == 0) ? 4 : selectedItem - 1;
+                    selectedItem = (selectedItem == 0) ? 5 : selectedItem - 1;
                 }
                 updateMenuTopSelection(old, selectedItem);
             }
@@ -88,21 +91,25 @@ void menu_handle_event(EncoderEvent_t event) {
                         modeConfirmed = false;
                         drawMenuMode(selectedItem, selectedMode, modeConfirmed);
                         break;
-                    case 1: // VOLUME
-                        currentState = MENU_STATE_MP3_VOL;
-                        selectedItem = 1;
-                        drawing_reset_volume_cache();
-                        drawMenuVolume(selectedItem, settings_get_mp3_volume());
+                    case 1: // WIFI (НОВЫЙ ПУНКТ)
+                        currentState = MENU_STATE_WIFI;
+                        drawWiFiInfoScreen();
                         break;
                     case 2: // CALIB
                         currentState = MENU_STATE_CALIB;
                         selectedItem = 0;
                         drawMenuCalib(selectedItem);
                         break;
-                    case 3: // SETTINGS (заглушка)
-                        // TODO: добавить позже
+                    case 3: // SETTINGS
+                        // TODO: добавить позже (пока заглушка)
                         break;
-                    case 4: // BACK - возврат на главный экран
+                    case 4: // VOLUME
+                        currentState = MENU_STATE_MP3_VOL;
+                        selectedItem = 1;
+                        drawing_reset_volume_cache();
+                        drawMenuVolume(selectedItem, settings_get_mp3_volume());
+                        break;
+                    case 5: // BACK
                         currentState = MENU_STATE_MAIN;
                         forceDisplayRedraw = true;
                         break;
@@ -120,15 +127,9 @@ void menu_handle_event(EncoderEvent_t event) {
                     newItem = (selectedItem == 0) ? 3 : selectedItem - 1;
                 }
 
-                // ================================================================
-                // ИЗМЕНЕНИЕ: проверка доступности MODE2
-                // Пункт 2 (MODE2) считается недоступным, если датчик гильзы отсутствует
-                // ================================================================
                 bool available = true;
                 if (sysData.mode == 0 && newItem == 1) available = false;
                 if (sysData.mode == 1 && newItem == 2) available = false;
-                
-                // ДОБАВЛЕНО: если пытаемся выбрать MODE2 (пункт 2), а гильзы нет — недоступно
                 if (newItem == 2 && !sensors[3].found) available = false;
 
                 if (!available) {
@@ -163,13 +164,7 @@ void menu_handle_event(EncoderEvent_t event) {
                 } else if (selectedItem == 1 || selectedItem == 2) {
                     uint8_t newMode = (selectedItem == 1) ? 0 : 1;
                     
-                    // ============================================================
-                    // ИЗМЕНЕНИЕ: при попытке переключиться в MODE2 проверяем наличие гильзы
-                    // Если гильзы нет — переключение игнорируется (без звука, без сообщений)
-                    // ============================================================
                     if (newMode == 1 && !sensors[3].found) {
-                        // Молча игнорируем попытку переключения в MODE2
-                        // Никаких сообщений на дисплей или в Serial
                         return;
                     }
                     
@@ -211,8 +206,8 @@ void menu_handle_event(EncoderEvent_t event) {
                     case 0:
                     case 3:
                         currentState = MENU_STATE_TOP;
-                        selectedItem = 1;
-                        drawMenuTop(1);
+                        selectedItem = 4;  // VOLUME
+                        drawMenuTop(4);
                         break;
                     case 2:
                         Mp3Command_t play = { MP3_CMD_PLAY_TRACK, 1 };
@@ -256,7 +251,7 @@ void menu_handle_event(EncoderEvent_t event) {
                         break;
                     case 3: // BACK
                         currentState = MENU_STATE_TOP;
-                        selectedItem = 2;
+                        selectedItem = 2;  // CALIB
                         drawMenuTop(2);
                         break;
                 }
@@ -269,6 +264,29 @@ void menu_handle_event(EncoderEvent_t event) {
                 currentState = MENU_STATE_CALIB;
                 selectedItem = 0;
                 drawMenuCalib(selectedItem);
+            }
+            break;
+
+        // --------------------------------------------------------------------
+        // НОВЫЙ ЭКРАН: WI-FI ИНФОРМАЦИЯ
+        // --------------------------------------------------------------------
+        case MENU_STATE_WIFI:
+            // Любое действие энкодера (клик или поворот) возвращает в главное меню
+            if (event == EVENT_BUTTON_CLICK || event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                currentState = MENU_STATE_TOP;
+                selectedItem = 1;  // подсветка на WIFI
+                drawMenuTop(selectedItem);
+            }
+            break;
+
+        // --------------------------------------------------------------------
+        // MENU_STATE_SETTINGS (пока заглушка)
+        // --------------------------------------------------------------------
+        case MENU_STATE_SETTINGS:
+            if (event == EVENT_BUTTON_CLICK || event == EVENT_ENCODER_LEFT || event == EVENT_ENCODER_RIGHT) {
+                currentState = MENU_STATE_TOP;
+                selectedItem = 3;  // SETTINGS
+                drawMenuTop(selectedItem);
             }
             break;
 

@@ -1,7 +1,7 @@
 /**
  * @file menu_drawing.h
  * @brief ЗАГОЛОВОЧНЫЙ ФАЙЛ ГРАФИЧЕСКОГО МОДУЛЯ МЕНЮ
- * @version 2.0
+ * @version 2.1
  */
 
 #ifndef MENU_DRAWING_H
@@ -36,11 +36,16 @@ void drawing_reset_cache();
 void drawing_reset_volume_cache();
 
 // ============================================================================
-// НОВЫЕ ФУНКЦИИ ДЛЯ КАЛИБРОВКИ
+// ФУНКЦИИ ДЛЯ КАЛИБРОВКИ
 // ============================================================================
 void drawMenuCalib(uint8_t selectedItem);
 void updateMenuCalibSelection(uint8_t oldItem, uint8_t newItem);
 void drawCalibStatus();
 void showMessage(const char* msg, uint16_t delayMs);
+
+// ============================================================================
+// ФУНКЦИЯ ДЛЯ ЭКРАНА WI-FI
+// ============================================================================
+void drawWiFiInfoScreen();
 
 #endif
