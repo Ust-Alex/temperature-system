@@ -3,12 +3,12 @@
  * ФАЙЛ: display_modes.cpp
  * ФУНКЦИИ ОТРИСОВКИ ДЛЯ РАЗЛИЧНЫХ РЕЖИМОВ РАБОТЫ
  * 
- * ВЕРСИЯ: 2.0 (ОЧИЩЕННАЯ, ИСПОЛЬЗУЕТ DISPLAY_COMMON)
+ * ВЕРСИЯ: 3.0 (ДЕЛЬТА ПОЛНОСТЬЮ УДАЛЕНА)
  * 
- * ОСОБЕННОСТИ:
- * 1. Не содержит кэширования - только отрисовка
- * 2. Использует общие функции из display_common
- * 3. Каждая функция отвечает за один элемент интерфейса
+ * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
+ * - Удалены все параметры delta из функций отрисовки
+ * - Удалены вызовы display_clear_delta_area() и display_draw_delta()
+ * - Функции теперь отображают только температуру
  * ============================================================================
  */
 
@@ -53,34 +53,26 @@ void display_mode1_draw_time() {
   tft.setTextFont(FONT_BIG);
 }
 
-void display_mode1_draw_sensor(int idx, int y, float temp, float delta) {
+void display_mode1_draw_sensor(int idx, int y, float temp) {
   const uint16_t BG_COLOR = COLOR_BLUE;
   const uint16_t TEXT_COLOR = COLOR_WHITE;
 
-  // Очистка областей
+  // Очистка области температуры
   display_clear_temperature_area(y, BG_COLOR);
-  display_clear_delta_area(y, 
-    delta >= 0 ? "+0.00" : "-0.00",  // Временная строка для расчёта ширины
-    BG_COLOR);
 
-  // Отрисовка
+  // Отрисовка температуры
   display_draw_temperature(y, temp, TEXT_COLOR, BG_COLOR);
-  display_draw_delta(y, delta, TEXT_COLOR, BG_COLOR);
 }
 
 // ============================================================================
 // РАБОЧИЙ РЕЖИМ (MODE2)
 // ============================================================================
 
-void display_mode2_draw_sensor(int idx, int y, float temp, float delta, 
+void display_mode2_draw_sensor(int idx, int y, float temp, 
                                uint16_t bgColor, uint16_t textColor) {
-  // Очистка областей
+  // Очистка области температуры
   display_clear_temperature_area(y, bgColor);
-  display_clear_delta_area(y, 
-    delta >= 0 ? "+0.00" : "-0.00",
-    bgColor);
 
-  // Отрисовка
+  // Отрисовка температуры
   display_draw_temperature(y, temp, textColor, bgColor);
-  display_draw_delta(y, delta, textColor, bgColor);
 }

@@ -11,31 +11,30 @@
 #include <freertos/semphr.h>
 
 // ============================================================================
-// СТРУКТУРЫ ДАННЫХ (копируем из system_config.h или temperature_system.ino)
+// СТРУКТУРЫ ДАННЫХ (ДЕЛЬТА УДАЛЕНА)
 // ============================================================================
 
 typedef struct {
-  float temps[4];
-  float deltas[4];
-  uint8_t colors[4];
-  uint8_t mode;
-  bool needsRedraw;
+  float temps[4];           // Температуры датчиков
+  uint8_t colors[4];        // Цвета для каждого датчика (не используется в текущей версии)
+  uint8_t mode;             // Текущий режим: 0 = MODE1, 1 = MODE2
+  bool needsRedraw;         // Флаг необходимости полной перерисовки
 } SystemData_t;
 
 typedef struct {
-  bool found;
-  float temp;
-  float baseTemp;
-  uint8_t addr[8];
-  float filterBuffer[5];
-  int filterIndex;
-  float filterSum;
-  uint32_t lostTimer;
+  bool found;               // Найден ли датчик
+  float temp;               // Текущая температура (отфильтрованная, откалиброванная)
+  float baseTemp;           // Базовая температура для калибровки (не используется)
+  uint8_t addr[8];          // Уникальный адрес датчика 1-Wire
+  float filterBuffer[5];    // Буфер фильтра скользящего среднего
+  int filterIndex;          // Текущий индекс в буфере фильтра
+  float filterSum;          // Сумма значений в буфере фильтра
+  uint32_t lostTimer;       // Таймер потери датчика (не используется)
 } Sensor_t;
 
 typedef struct {
-  uint8_t cmd;
-  uint16_t param;
+  uint8_t cmd;              // Команда MP3-плееру
+  uint16_t param;           // Параметр команды (номер трека, громкость и т.д.)
 } Mp3Command_t;
 
 // ============================================================================
@@ -77,14 +76,11 @@ extern bool timeIsCounting;
 extern float guildBaseTemp;
 extern uint8_t guildColorState;
 
-// КЭШ ОТОБРАЖЕНИЯ (для оптимизации, предотвращение мерцания)
+// КЭШ ОТОБРАЖЕНИЯ (ТОЛЬКО ДЛЯ ТЕМПЕРАТУРЫ)
 extern float lastDisplayTemps[4];      // Последние отображённые значения температур
-extern float lastDisplayDeltas[4];     // Последние отображённые значения дельт
 extern String lastTimeString;          // Кэш времени для MODE1
 extern String lastMode2TimeString;     // Кэш времени для MODE2
 extern bool displayInitialized;        // Флаг инициализации дисплея
-// lastGlobalBgColor уже должен быть где-то выше (в разделе состояния интерфейса)
-
 
 // Константы для дисплея
 extern const char* sensorNames[4];
@@ -92,7 +88,6 @@ extern int bigFontHeight;
 extern int deltaFontHeight;
 extern int smallFontHeight;
 extern int maxTempWidth;
-extern int maxDeltaWidth;
 extern const int displayYPositions[4];
 
 // Энкодер и интерфейс

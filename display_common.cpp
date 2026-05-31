@@ -3,12 +3,12 @@
  * ФАЙЛ: display_common.cpp
  * ОБЩИЕ ФУНКЦИИ ОТРИСОВКИ ДЛЯ ВСЕХ РЕЖИМОВ ДИСПЛЕЯ
  * 
- * ВЕРСИЯ: 1.1 (ОПТИМИЗИРОВАННАЯ, БЕЗ vTaskDelay)
+ * ВЕРСИЯ: 2.0 (ДЕЛЬТА ПОЛНОСТЬЮ УДАЛЕНА)
  * 
- * ОПТИМИЗАЦИИ:
- * 1. Убраны vTaskDelay(1) из всех функций
- * 2. Добавлена обработка "--.--" для невалидных температур
- * 3. Сохранена полная функциональность
+ * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
+ * - Удалены функции display_clear_delta_area() и display_draw_delta()
+ * - Удалены все упоминания дельты
+ * - Оставлены только функции для работы с температурой
  * ============================================================================
  */
 
@@ -27,10 +27,10 @@ bool display_is_valid_temperature(float temp) {
   if (temp <= TEMP_CRITICAL_LOST + 1.0f && temp >= TEMP_CRITICAL_LOST - 1.0f) return false;
   if (temp <= TEMP_SENSOR_LOST + 1.0f && temp >= TEMP_SENSOR_LOST - 1.0f) return false;
   if (temp <= TEMP_NO_DATA + 1.0f && temp >= TEMP_NO_DATA - 1.0f) return false;
-  
+
   // Проверка физического диапазона DS18B20
   if (temp < -55.0f || temp > 125.0f) return false;
-  
+
   return true;
 }
 
@@ -43,37 +43,11 @@ void display_clear_temperature_area(int y, uint16_t bgColor) {
 }
 
 // ============================================================================
-// ОЧИСТКА ОБЛАСТИ ДЕЛЬТЫ
-// ============================================================================
-void display_clear_delta_area(int y, const char* deltaStr, uint16_t bgColor) {
-  // Временно переключаемся на шрифт дельты для расчёта ширины
-  tft.setTextFont(FONT_DELTA);
-  
-  // Рассчитываем позицию дельты (правый край с отступом 10 пикселей)
-  int deltaWidth = tft.textWidth(deltaStr);
-  int deltaX = 240 - deltaWidth - 10;  // 240 - ширина экрана
-  
-  // Рассчитываем вертикальную позицию (снизу области)
-  int deltaY = y + (RECT_HEIGHT - deltaFontHeight);
-  
-  // Корректировка, если дельта выходит за нижнюю границу
-  if (deltaY + deltaFontHeight > y + RECT_HEIGHT) {
-    deltaY = y + RECT_HEIGHT - deltaFontHeight - 5;
-  }
-  
-  // Затираем область с небольшим запасом по бокам
-  tft.fillRect(deltaX - 5, deltaY, deltaWidth + 10, deltaFontHeight, bgColor);
-  
-  // Возвращаем основной шрифт
-  tft.setTextFont(FONT_BIG);
-}
-
-// ============================================================================
 // ОТРИСОВКА ТЕМПЕРАТУРЫ
 // ============================================================================
 void display_draw_temperature(int y, float temp, uint16_t textColor, uint16_t bgColor) {
   tft.setTextFont(FONT_BIG);
-  
+
   // Определяем цвет текста для специальных значений
   uint16_t actualTextColor = textColor;
   if (temp <= TEMP_CRITICAL_LOST + 1.0f && temp >= TEMP_CRITICAL_LOST - 1.0f) {
@@ -83,7 +57,7 @@ void display_draw_temperature(int y, float temp, uint16_t textColor, uint16_t bg
   }
 
   tft.setTextColor(actualTextColor, bgColor);
-  
+
   // Вертикальное центрирование в области датчика
   int tempY = y + (RECT_HEIGHT - bigFontHeight) / 2;
   tft.setCursor(10, tempY);
@@ -99,42 +73,4 @@ void display_draw_temperature(int y, float temp, uint16_t textColor, uint16_t bg
       tft.printf("%.2f", temp);
     }
   }
-  
-  // Задержка УДАЛЕНА для ускорения отрисовки
-}
-
-// ============================================================================
-// ОТРИСОВКА ДЕЛЬТЫ
-// ============================================================================
-void display_draw_delta(int y, float delta, uint16_t textColor, uint16_t bgColor) {
-  tft.setTextFont(FONT_DELTA);
-  tft.setTextColor(textColor, bgColor);
-
-  // Форматирование дельты со знаком
-  char deltaStr[8];
-  if (delta < -100.0f || delta > 100.0f) {
-    // Защита от нереальных значений
-    strcpy(deltaStr, "0.00");
-  } else if (delta >= 0) {
-    sprintf(deltaStr, "+%.2f", delta);  // Явный знак плюс
-  } else {
-    sprintf(deltaStr, "%.2f", delta);   // Минус уже в числе
-  }
-
-  // Рассчёт позиции (аналогично очистке)
-  int deltaWidth = tft.textWidth(deltaStr);
-  int deltaX = 240 - deltaWidth - 10;
-  int deltaY = y + (RECT_HEIGHT - deltaFontHeight);
-  
-  if (deltaY + deltaFontHeight > y + RECT_HEIGHT) {
-    deltaY = y + RECT_HEIGHT - deltaFontHeight - 5;
-  }
-
-  tft.setCursor(deltaX, deltaY);
-  tft.print(deltaStr);
-  
-  // Возвращаем основной шрифт
-  tft.setTextFont(FONT_BIG);
-  
-  // Задержка УДАЛЕНА для ускорения отрисовки
 }

@@ -20,9 +20,8 @@ void display_mode1_draw_time();
  * @param idx - индекс датчика (0-3)
  * @param y - вертикальная координата области
  * @param temp - температура для отображения
- * @param delta - дельта для отображения
  */
-void display_mode1_draw_sensor(int idx, int y, float temp, float delta);
+void display_mode1_draw_sensor(int idx, int y, float temp);
 
 // ============================================================================
 // РАБОЧИЙ РЕЖИМ (MODE2) - ЦВЕТ МЕНЯЕТСЯ
@@ -35,11 +34,10 @@ void display_mode1_draw_sensor(int idx, int y, float temp, float delta);
  * @param idx - индекс датчика (0-3)
  * @param y - вертикальная координата области
  * @param temp - температура для отображения
- * @param delta - дельта для отображения
  * @param bgColor - цвет фона (зелёный/жёлтый/красный)
  * @param textColor - цвет текста (чёрный или белый)
  */
-void display_mode2_draw_sensor(int idx, int y, float temp, float delta, 
+void display_mode2_draw_sensor(int idx, int y, float temp, 
                                uint16_t bgColor, uint16_t textColor);
 
 #endif // DISPLAY_MODES_H

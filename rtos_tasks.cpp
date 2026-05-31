@@ -2,13 +2,14 @@
  * ============================================================================
  * @file rtos_tasks.cpp
  * @brief ЗАДАЧИ FREERTOS (исправленная версия, калибровка через eeprom)
- * @version 4.3
+ * @version 4.4 (ДЕЛЬТА УДАЛЕНА, ДОБАВЛЕНА ПРОВЕРКА МОДОВ)
  * 
  * ОСОБЕННОСТИ:
  * - 4 задачи: энкодер, измерения, дисплей, serial
  * - Очередь событий для энкодера
  * - Таймаут возврата в главный экран (30 сек)
  * - Команды калибровки работают через eeprom_settings
+ * - ЗАЩИТА: MODE2 недоступен при отсутствии гильзы
  * ============================================================================
  */
 
@@ -111,7 +112,7 @@ void taskSerial(void* pv) {
             if (t == TEMP_NO_DATA) Serial.print("⚠️ нет данных");
             else if (t == TEMP_SENSOR_LOST) Serial.print("❌ потерян");
             else if (t == TEMP_CRITICAL_LOST) Serial.print("🔥 критично");
-            else Serial.printf("%.2f°C, Δ%.2f", t, sysData.deltas[i]);
+            else Serial.printf("%.2f°C", t);  // ДЕЛЬТА УДАЛЕНА
             Serial.println();
           }
         }
@@ -134,14 +135,20 @@ void taskSerial(void* pv) {
       }
 
       // =================================================================
-      // РЕЖИМЫ
+      // РЕЖИМЫ (С ЗАЩИТОЙ)
       // =================================================================
       else if (cmd == "MODE1") {
         resetDisplayState(0);
         Serial.println("🔵 MODE1");
-      } else if (cmd == "MODE2") {
-        resetDisplayState(1);
-        Serial.println("🟢 MODE2");
+      } 
+      else if (cmd == "MODE2") {
+        // ЗАЩИТА: проверяем наличие гильзы
+        if (!sensors[3].found) {
+          Serial.println("❌ MODE2 недоступен: датчик гильзы отсутствует");
+        } else {
+          resetDisplayState(1);
+          Serial.println("🟢 MODE2");
+        }
       }
 
       // =================================================================

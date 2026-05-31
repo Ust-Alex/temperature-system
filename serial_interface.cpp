@@ -126,7 +126,7 @@ void serial_print_status() {
       Serial.printf("✅ Найден, ");
       if (isValidTemperature(currentData.temps[i])) {
         Serial.printf("%.2f°C", currentData.temps[i]);
-        Serial.printf(", Δ(2с): %+.2f°C", currentData.deltas[i]);
+        // ДЕЛЬТА УДАЛЕНА - больше не выводится
       } else {
         Serial.printf("ОШИБКА ДАННЫХ");
       }

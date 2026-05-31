@@ -3,7 +3,7 @@
  * ФАЙЛ: measurement_core.cpp
  * ЯДРО ИЗМЕРЕНИЙ - ФУНКЦИИ ОБРАБОТКИ ДАННЫХ
  * 
- * ВЕРСИЯ: 5.0 (С ИСПРАВЛЕННЫМИ MP3-КОМАНДАМИ)
+ * ВЕРСИЯ: 6.0 (ДЕЛЬТА ПОЛНОСТЬЮ УДАЛЕНА)
  * 
  * ОТВЕТСТВЕННОСТЬ:
  * 1. Фильтрация данных с датчиков
@@ -44,21 +44,18 @@ float filterValue(int sensorIdx, float newValue) {
 }
 
 bool isValidTemperature(float temp) {
-  return !(temp == TEMP_NO_DATA ||
-           temp == TEMP_SENSOR_LOST ||
-           temp == TEMP_CRITICAL_LOST ||
-           temp < -50.0f ||
-           temp > 150.0f);
+  return !(temp == TEMP_NO_DATA || temp == TEMP_SENSOR_LOST || temp == TEMP_CRITICAL_LOST || temp < -50.0f || temp > 150.0f);
 }
 
 // ============================================================================
-// БЕЗОПАСНЫЙ ДОСТУП К ДАННЫМ
+// БЕЗОПАСНЫЙ ДОСТУП К ДАННЫМ (БЕЗ ДЕЛЬТЫ)
 // ============================================================================
 
 void safeUpdateSystemData(int idx, float temp, float delta) {
+  // Параметр delta сохранён для совместимости с вызовами, но не используется
   if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     sysData.temps[idx] = temp;
-    sysData.deltas[idx] = delta;
+    // sysData.deltas[idx] = delta;  // УДАЛЕНО - поля deltas больше нет
     xSemaphoreGive(dataMutex);
   }
 }
@@ -76,22 +73,22 @@ void safeReadSystemData(SystemData_t* data) {
 
 static void playCriticalAlarm() {
   if (!mp3PlayerReady) return;
-  
-  Mp3Command_t cmdStop = {MP3_CMD_STOP, 0};
+
+  Mp3Command_t cmdStop = { MP3_CMD_STOP, 0 };
   sendMP3Command(cmdStop);
   vTaskDelay(pdMS_TO_TICKS(100));
-  
-  Mp3Command_t cmdAlert = {MP3_CMD_PLAY_TRACK, 5};  // 0005Avaria.mp3
+
+  Mp3Command_t cmdAlert = { MP3_CMD_PLAY_TRACK, 5 };  // 0005Avaria.mp3
   sendMP3Command(cmdAlert);
 }
 
 static void stopAllSounds() {
   if (!mp3PlayerReady) return;
-  
-  Mp3Command_t cmdStop = {MP3_CMD_STOP, 0};
+
+  Mp3Command_t cmdStop = { MP3_CMD_STOP, 0 };
   sendMP3Command(cmdStop);
-  
-  Mp3Command_t cmdDisableRepeat = {MP3_CMD_DISABLE_REPEAT, 0};
+
+  Mp3Command_t cmdDisableRepeat = { MP3_CMD_DISABLE_REPEAT, 0 };
   sendMP3Command(cmdDisableRepeat);
 }
 
@@ -101,12 +98,12 @@ static void stopAllSounds() {
 
 void handleCriticalError() {
   Serial.println("[ERROR] 🚨 Критическая ошибка (потеря гильзы)!");
-  
+
   playCriticalAlarm();
-  
+
   timeIsCounting = false;
   timeStartMs = 0;
-  
+
   if (baseSaved) {
     baseSaved = false;
     guildBaseTemp = 0.0f;
