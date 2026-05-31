@@ -26,10 +26,10 @@
 #include <WiFiManager.h>
 #include <WebSocketsServer.h>
 // #include "ESPAsyncWebServer.h" // V-3.10.0
-#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h" // V-3.10.0
+#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h"  // V-3.10.0
 
 #include <LittleFS.h>
-#include <ESPmDNS.h>          // ДЛЯ mDNS (доступ по имени)
+#include <ESPmDNS.h>  // ДЛЯ mDNS (доступ по имени)
 
 // ============================================================================
 // ПРОЕКТНЫЕ ЗАГОЛОВКИ
@@ -58,7 +58,7 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
   float t0 = sensors[0].temp;  // 100см
   float t1 = sensors[1].temp;  // 75см
   float t2 = sensors[2].temp;  // 50см
-  
+
   // ========================================================================
   // ДЛЯ ГИЛЬЗЫ: проверяем наличие датчика
   // Если датчик не найден — отправляем 0.00, иначе — его температуру
@@ -67,15 +67,15 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
   if (sensors[3].found) {
     t3 = sensors[3].temp;
   } else {
-    t3 = 0.0f;   // веб-страница покажет 0.00
+    t3 = 0.0f;  // веб-страница покажет 0.00
   }
-  
+
   int mode = sysData.mode;
   int color = guildColorState;
-  
+
   // Время в формате ЧЧ:ММ
   char timeStr[6] = "00:00";
-  
+
   if (mode == 0) {
     if (timeIsCounting) {
       uint32_t elapsed = millis() - timeStartMs;
@@ -191,12 +191,12 @@ void taskWiFi(void* pvParameters) {
   // 1. НАСТРОЙКА WIFIMANAGER
   // ==========================================================================
   WiFiManager wm;
-  
+
   wm.setConnectTimeout(30);        // 30 секунд на подключение
   wm.setConfigPortalTimeout(180);  // 3 минуты портал
-  
+
   Serial.println("[WiFi] Попытка подключения к сохранённой сети...");
-  
+
   // Пытаемся подключиться. Если не получается, запускается портал "TermoESP32"
   if (!wm.autoConnect("TermoESP32")) {
     Serial.println("[WiFi] ❌ Не удалось подключиться. Перезагрузка...");
@@ -239,13 +239,13 @@ void taskWiFi(void* pvParameters) {
     // Проверка кнопки BOOT (сброс настроек при удержании 3 сек)
     static uint32_t lastButtonCheck = 0;
     uint32_t now = millis();
-    
+
     if (now - lastButtonCheck > 100) {
       lastButtonCheck = now;
-      
+
       if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
         vTaskDelay(pdMS_TO_TICKS(3000));
-        
+
         if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
           Serial.println("[WiFi] Сброс настроек по кнопке");
           wm.resetSettings();
@@ -264,4 +264,34 @@ void taskWiFi(void* pvParameters) {
 
     vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(50));
   }
+}
+
+void startWiFiConfig() {
+  // Очищаем экран и выводим сообщение
+  tft.fillScreen(COLOR_BLACK);
+  tft.setTextFont(FONT_DELTA);  // простой шрифт с буквами
+  // tft.setTextFont(FONT_SMALL);  // простой шрифт с буквами
+  tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+  tft.setCursor(57, 50);
+  tft.print("Connect to");
+  tft.setCursor(47, 80);
+  tft.print("TermoESP32");
+  tft.setCursor(65, 120);
+  tft.print("then open");
+  tft.setCursor(55, 150);
+  tft.print("192.168.4.1");
+  delay(2000);  // показываем сообщение 2 секунды
+
+  // Создаём WiFiManager
+  WiFiManager wm;
+
+  // Сбрасываем сохранённые настройки
+  wm.resetSettings();
+
+  // Запускаем портал настройки (точка доступа TermoESP32)
+  wm.autoConnect("TermoESP32");
+
+  // После завершения (успех или отмена) ждём 2 секунды и перезагружаемся
+  delay(2000);
+  ESP.restart();
 }

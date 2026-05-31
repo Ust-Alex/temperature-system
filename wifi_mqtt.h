@@ -45,5 +45,6 @@ void initWebSocket();
 void sendTemperaturesToClients();
 void broadcastJSON(const char* json);
 void taskWiFi(void* pvParameters);
+void startWiFiConfig();
 
 #endif

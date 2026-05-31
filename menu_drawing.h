@@ -44,8 +44,10 @@ void drawCalibStatus();
 void showMessage(const char* msg, uint16_t delayMs);
 
 // ============================================================================
-// ФУНКЦИЯ ДЛЯ ЭКРАНА WI-FI
+// ФУНКЦИИ ДЛЯ ЭКРАНА WI-FI
 // ============================================================================
 void drawWiFiInfoScreen();
+void drawWiFiInfoScreen();
+void updateWiFiSelection(uint8_t selectedItem);
 
 #endif
