@@ -2,33 +2,26 @@
  * ============================================================================
  * ФАЙЛ: hardware_control.cpp
  * РЕАЛИЗАЦИЯ ФУНКЦИЙ УПРАВЛЕНИЯ АППАРАТНОЙ ЧАСТЬЮ СИСТЕМЫ
- * 
- * ВЕРСИЯ: 5.2 (ДОБАВЛЕН РАСЧЁТ РАЗМЕРОВ ДЛЯ ОЧИСТКИ ОБЛАСТИ)
- * 
- * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
- * - systemInitialized ВСЕГДА = true (система загружается даже без гильзы)
- * - criticalError = false (при отсутствии гильзы ошибка не блокирует)
- * - Удалены все упоминания дельты (maxDeltaWidth, sysData.deltas)
- * - Добавлен предрасчёт размеров для очистки области температуры
+ * ВЕРСИЯ: 6.0 (ДЛЯ 6 ДАТЧИКОВ, 4 ШИН)
  * ============================================================================
  */
 
 #include "hardware_control.h"
-#include "encoder_engine.h"   // Модуль для работы с энкодером
-#include "mp3_player.h"       // Модуль MP3-проигрывателя
-#include "sensors.h"          // Модуль датчиков
+#include "encoder_engine.h"
+#include "mp3_player.h"
+#include "sensors.h"
 
 // ============================================================================
 // ОСНОВНАЯ ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ АППАРАТУРЫ
 // ============================================================================
 
 void initHardware() {
-  // 1. ИНИЦИАЛИЗАЦИЯ ПОСЛЕДОВАТЕЛЬНОГО ПОРТА ДЛЯ ОТЛАДКИ
+  // 1. ИНИЦИАЛИЗАЦИЯ ПОСЛЕДОВАТЕЛЬНОГО ПОРТА
   Serial.begin(115200);
   delay(1000);
   
   Serial.println("\n" + String(60, '='));
-  Serial.println("    СИСТЕМА МОНИТОРИНГА ТЕМПЕРАТУР - FreeRTOS + ENCODER + MP3");
+  Serial.println("    СИСТЕМА МОНИТОРИНГА ТЕМПЕРАТУР - 6 ДАТЧИКОВ, 4 ШИНЫ");
   Serial.println(String(60, '='));
 
   // 2. ИНИЦИАЛИЗАЦИЯ TFT ДИСПЛЕЯ
@@ -38,7 +31,7 @@ void initHardware() {
   tft.fillScreen(COLOR_BLACK);
   tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
 
-  // Настройка метрик шрифтов для оптимизации отображения
+  // Настройка метрик шрифтов
   tft.setTextFont(FONT_BIG);
   bigFontHeight = tft.fontHeight();
 
@@ -62,24 +55,24 @@ void initHardware() {
   deltaFontHeightClear = tft.fontHeight();
   deltaTempWidthClear = tft.textWidth("00.00") + 10;
 
-  // Возвращаем шрифт обратно на FONT_BIG (по умолчанию)
   tft.setTextFont(FONT_BIG);
 
-  // Тестовое сообщение на дисплее (10 секунд)
+  // Тестовое сообщение
   tft.setTextFont(FONT_DELTA);
   tft.setCursor(5, 100);
   tft.print("esp32ust.local");
   tft.setCursor(5, 150);
   tft.print("192.168.1.11");
-  
-  delay(10000);
+  delay(1000);
 
-  // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE И ДАТЧИКОВ
+  // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE (4 ШИНЫ)
   Serial.println("Инициализация шин 1-Wire...");
   sensorsA.begin();
   sensorsB.begin();
+  sensorsC.begin();
+  sensorsD.begin();
 
-  sensors_init();  // Инициализация модуля датчиков
+  sensors_init();
 
   // 4. ИНИЦИАЛИЗАЦИЯ ЭНКОДЕРА
   Serial.println("Инициализация энкодера...");
@@ -92,9 +85,8 @@ void initHardware() {
   sysData.mode = 0;
   sysData.needsRedraw = true;
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 6; i++) {
     sysData.temps[i] = 0.0f;
-    // sysData.deltas[i] = 0.0f;  // УДАЛЕНО - поля deltas больше нет
     sysData.colors[i] = 0;
   }
 
@@ -102,19 +94,10 @@ void initHardware() {
   guildColorState = 0;
 
   // ========================================================================
-  // КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ ДЛЯ РАБОТЫ БЕЗ ДАТЧИКА ГИЛЬЗЫ
+  // ФЛАГИ ДЛЯ РАБОТЫ БЕЗ ДАТЧИКА ГИЛЬЗЫ
   // ========================================================================
-  // Раньше здесь было:
-  //   criticalError = !sensors[3].found;
-  //   systemInitialized = sensors[3].found;
-  //
-  // Теперь система НЕ БЛОКИРУЕТСЯ при отсутствии гильзы.
-  // criticalError оставлен только для индикации, но не влияет на загрузку.
-  // systemInitialized принудительно true.
-  // ========================================================================
-  
-  criticalError = !sensors[3].found;      // только для информации (не блокирует)
-  systemInitialized = true;               // система всегда инициализирована
+  criticalError = !sensors[4].found;      // гильза теперь индекс 4
+  systemInitialized = true;
 
   forceDisplayRedraw = true;
   lastDisplayMode = 0xFF;
@@ -125,10 +108,8 @@ void initHardware() {
   Serial.println("🎛️  Энкодер готов к работе");
   Serial.println(String(60, '=') + "\n");
   
-  // Дополнительное уведомление о статусе гильзы (только в Serial, не блокирует)
-  if (!sensors[3].found) {
+  if (!sensors[4].found) {
     Serial.println("⚠️ ДАТЧИК ГИЛЬЗЫ НЕ ОБНАРУЖЕН");
     Serial.println("   → Переключение в MODE2 недоступно");
-    Serial.println("   → На дисплее будет показано --.--");
   }
 }

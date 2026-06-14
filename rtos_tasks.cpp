@@ -1,15 +1,8 @@
 /**
  * ============================================================================
  * @file rtos_tasks.cpp
- * @brief ЗАДАЧИ FREERTOS (исправленная версия, калибровка через eeprom)
- * @version 4.4 (ДЕЛЬТА УДАЛЕНА, ДОБАВЛЕНА ПРОВЕРКА МОДОВ)
- * 
- * ОСОБЕННОСТИ:
- * - 4 задачи: энкодер, измерения, дисплей, serial
- * - Очередь событий для энкодера
- * - Таймаут возврата в главный экран (30 сек)
- * - Команды калибровки работают через eeprom_settings
- * - ЗАЩИТА: MODE2 недоступен при отсутствии гильзы
+ * @brief ЗАДАЧИ FREERTOS (6 ДАТЧИКОВ, ГИЛЬЗА ИНДЕКС 4)
+ * @version 5.0
  * ============================================================================
  */
 
@@ -22,17 +15,9 @@
 #include "eeprom_settings.h"
 #include "wifi_mqtt.h"
 
-// ============================================================================
-// КОНСТАНТЫ
-// ============================================================================
 #define HEARTBEAT_INTERVAL 30000
-#define STACK_CHECK_INTERVAL 300000
 #define ENCODER_POLL_INTERVAL 10
-#define INACTIVITY_TIMEOUT 30000
 
-// ============================================================================
-// ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ
-// ============================================================================
 static uint8_t selectedModeIndex = 0;
 static uint32_t lastUserActivity = 0;
 
@@ -61,7 +46,6 @@ void taskSerial(void* pv) {
     uint32_t now = pdTICKS_TO_MS(xTaskGetTickCount());
 
     if (now - lastHeartbeat > HEARTBEAT_INTERVAL) {
-      // Serial.printf("[SERIAL] heartbeat, команд: %lu\n", cmdCount);
       lastHeartbeat = now;
     }
 
@@ -73,9 +57,6 @@ void taskSerial(void* pv) {
 
       Serial.printf("> %s\n", cmd.c_str());
 
-      // =================================================================
-      // СИСТЕМНЫЕ
-      // =================================================================
       if (cmd == "HELP" || cmd == "?") {
         Serial.println("\n" + String(60, '='));
         Serial.println("📋 КОМАНДЫ:");
@@ -102,8 +83,8 @@ void taskSerial(void* pv) {
         Serial.printf("Инициализация: %s\n", systemInitialized ? "ДА" : "НЕТ");
         Serial.printf("База гильзы: %.2f\n", guildBaseTemp);
 
-        Serial.println("\n--- ДАТЧИКИ ---");
-        for (int i = 0; i < 4; i++) {
+        Serial.println("\n--- ДАТЧИКИ (6 шт.) ---");
+        for (int i = 0; i < 6; i++) {
           Serial.printf("  [%d] %s: ", i, sensorNames[i]);
           if (!sensors[i].found) {
             Serial.println("❌ не найден");
@@ -112,7 +93,7 @@ void taskSerial(void* pv) {
             if (t == TEMP_NO_DATA) Serial.print("⚠️ нет данных");
             else if (t == TEMP_SENSOR_LOST) Serial.print("❌ потерян");
             else if (t == TEMP_CRITICAL_LOST) Serial.print("🔥 критично");
-            else Serial.printf("%.2f°C", t);  // ДЕЛЬТА УДАЛЕНА
+            else Serial.printf("%.2f°C", t);
             Serial.println();
           }
         }
@@ -134,16 +115,13 @@ void taskSerial(void* pv) {
         ESP.restart();
       }
 
-      // =================================================================
-      // РЕЖИМЫ (С ЗАЩИТОЙ)
-      // =================================================================
       else if (cmd == "MODE1") {
         resetDisplayState(0);
         Serial.println("🔵 MODE1");
       } 
       else if (cmd == "MODE2") {
-        // ЗАЩИТА: проверяем наличие гильзы
-        if (!sensors[3].found) {
+        // Гильза теперь индекс 4
+        if (!sensors[4].found) {
           Serial.println("❌ MODE2 недоступен: датчик гильзы отсутствует");
         } else {
           resetDisplayState(1);
@@ -151,9 +129,6 @@ void taskSerial(void* pv) {
         }
       }
 
-      // =================================================================
-      // КАЛИБРОВКА (всё через eeprom)
-      // =================================================================
       else if (cmd == "CALIB SHOW") {
         printCalibrationStatus();
       } else if (cmd == "CALIB AUTO") {
@@ -163,23 +138,23 @@ void taskSerial(void* pv) {
       } else if (cmd == "CALIB OFF") {
         toggleCalibration(false);
       } else if (cmd == "CALIB RESET") {
-        for (int i = 0; i < 4; i++) settings_set_offset(i, 0.0f);
+        for (int i = 0; i < 6; i++) settings_set_offset(i, 0.0f);
         settings_save();
         Serial.println("[CALIB] ✅ Все offset сброшены");
       } else if (cmd.startsWith("CALIB REF ")) {
         int idx = cmd.substring(10).toInt();
-        if (idx >= 0 && idx < 4) setReferenceSensor(idx);
-        else Serial.println("[CALIB] ❌ Индекс 0-3");
+        if (idx >= 0 && idx < 6) setReferenceSensor(idx);
+        else Serial.println("[CALIB] ❌ Индекс 0-5");
       } else if (cmd.startsWith("CALIB SET ")) {
         int sp1 = 9;
         int sp2 = cmd.indexOf(' ', sp1 + 1);
         if (sp2 > 0) {
           int idx = cmd.substring(sp1, sp2).toInt();
           float off = cmd.substring(sp2 + 1).toFloat();
-          if (idx >= 0 && idx < 4) setManualOffset(idx, off);
-          else Serial.println("[CALIB] ❌ Индекс 0-3");
+          if (idx >= 0 && idx < 6) setManualOffset(idx, off);
+          else Serial.println("[CALIB] ❌ Индекс 0-5");
         } else {
-          Serial.println("[CALIB] ❌ Формат: CALIB SET [0-3] [offset]");
+          Serial.println("[CALIB] ❌ Формат: CALIB SET [0-5] [offset]");
         }
       }
 

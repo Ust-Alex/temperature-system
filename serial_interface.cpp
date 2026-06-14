@@ -1,5 +1,19 @@
-#include "serial_interface.h"
+/**
+ * ============================================================================
+ * @file serial_interface.cpp
+ * @brief ОБРАБОТКА КОМАНД ИЗ ПОСЛЕДОВАТЕЛЬНОГО ПОРТА
+ * @version 2.1 (ДОБАВЛЕН display_common.h)
+ * ============================================================================
+ */
 
+#include "serial_interface.h"
+#include "sensors.h"           // для sensors_scan_all()
+#include "display_common.h"    // ДОБАВЛЕНО для display_is_valid_temperature()
+#include "display_engine.h"    // для resetDisplayState()
+
+// ============================================================================
+// ОБРАБОТКА КОМАНД
+// ============================================================================
 void serial_process_command(String command) {
   command.trim();
   
@@ -43,7 +57,7 @@ void serial_process_command(String command) {
     
   } else if (command == "FIND") {
     Serial.println("\n🔍 ПРИНУДИТЕЛЬНЫЙ ПОИСК ДАТЧИКОВ...");
-    findSensors();
+    sensors_scan_all();
     forceDisplayRedraw = true;
     Serial.println("✅ Поиск завершен, дисплей будет обновлен");
     
@@ -60,6 +74,9 @@ void serial_process_command(String command) {
   }
 }
 
+// ============================================================================
+// ЧТЕНИЕ ВВОДА ИЗ ПОРТА
+// ============================================================================
 void serial_handle_input() {
   static String inputBuffer = "";
   static uint32_t lastCommandTime = 0;
@@ -93,6 +110,9 @@ void serial_handle_input() {
   }
 }
 
+// ============================================================================
+// ВЫВОД СТАТУСА СИСТЕМЫ
+// ============================================================================
 void serial_print_status() {
   Serial.println("\n" + String(50, '='));
   Serial.println("         СТАТУС СИСТЕМЫ");
@@ -119,14 +139,13 @@ void serial_print_status() {
   Serial.printf("Флаг перерисовки: %s\n",
                 forceDisplayRedraw ? "ДА" : "НЕТ");
   
-  Serial.println("\n--- СОСТОЯНИЕ ДАТЧИКОВ ---");
-  for (int i = 0; i < 4; i++) {
+  Serial.println("\n--- СОСТОЯНИЕ ДАТЧИКОВ (6 шт.) ---");
+  for (int i = 0; i < 6; i++) {
     Serial.printf("  [%d] %s: ", i, sensorNames[i]);
     if (sensors[i].found) {
       Serial.printf("✅ Найден, ");
-      if (isValidTemperature(currentData.temps[i])) {
+      if (display_is_valid_temperature(currentData.temps[i])) {
         Serial.printf("%.2f°C", currentData.temps[i]);
-        // ДЕЛЬТА УДАЛЕНА - больше не выводится
       } else {
         Serial.printf("ОШИБКА ДАННЫХ");
       }
@@ -147,6 +166,9 @@ void serial_print_status() {
   Serial.println(String(50, '=') + "\n");
 }
 
+// ============================================================================
+// ВЫВОД СПРАВКИ
+// ============================================================================
 void serial_print_help() {
   Serial.println("\n" + String(50, '='));
   Serial.println("         КОМАНДЫ СИСТЕМЫ");

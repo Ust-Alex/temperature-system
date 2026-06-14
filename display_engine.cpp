@@ -3,12 +3,12 @@
  * ФАЙЛ: display_engine.cpp
  * ДВИЖОК ОТОБРАЖЕНИЯ - УПРАВЛЕНИЕ TFT ДИСПЛЕЕМ
  *
- * ВЕРСИЯ: 8.0 (УДАЛЕНЫ ДУБЛИРУЮЩИЕСЯ ФУНКЦИИ)
+ * ВЕРСИЯ: 9.0 (ДЛЯ 6 ДАТЧИКОВ, ИСПОЛЬЗУЕТ sensorY[])
  *
  * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
- * - Удалены функции display_is_valid_temperature, display_clear_temperature_area,
- *   display_draw_temperature (все они теперь в display_common.cpp)
- * - Оставлены только уникальные для этого файла функции
+ * - Все циклы расширены до 6 датчиков
+ * - Используется sensorY[i] вместо displayYPositions[i]
+ * - Гильза теперь индекс 4
  * ============================================================================
  */
 
@@ -49,8 +49,8 @@ void performFullDisplayRedraw() {
   tft.fillScreen(bgColor);
   lastGlobalBgColor = bgColor;
 
-  // Полный сброс кэша (только для температуры)
-  for (int i = 0; i < 4; i++) {
+  // Полный сброс кэша (6 датчиков)
+  for (int i = 0; i < 6; i++) {
     lastDisplayTemps[i] = -1000.0f;
   }
   lastTimeString = "";
@@ -143,12 +143,12 @@ void taskDisplay(void* pvParameters) {
         lastTimeString = currentTime;
       }
 
-      // Отрисовка датчиков (только температура)
-      for (int i = 0; i < 4; i++) {
+      // Отрисовка датчиков (6 датчиков, используем sensorY)
+      for (int i = 0; i < 6; i++) {
         if (!sensors[i].found) continue;
 
         float temp = sysData.temps[i];
-        int y = displayYPositions[i];
+        int y = sensorY[i];  // Используем sensorY вместо displayYPositions
 
         if (!display_is_valid_temperature(temp)) continue;
 
@@ -173,7 +173,7 @@ void taskDisplay(void* pvParameters) {
         } else {
           tft.fillScreen(bgColor);
           lastGlobalBgColor = bgColor;
-          for (int i = 0; i < 4; i++) {
+          for (int i = 0; i < 6; i++) {
             lastDisplayTemps[i] = -1000.0f;
           }
           lastMode2TimeString = "";
@@ -198,12 +198,12 @@ void taskDisplay(void* pvParameters) {
         lastMode2TimeString = currentTime;
       }
 
-      // Отрисовка датчиков (только температура)
-      for (int i = 0; i < 4; i++) {
+      // Отрисовка датчиков (6 датчиков, используем sensorY)
+      for (int i = 0; i < 6; i++) {
         if (!sensors[i].found) continue;
 
         float temp = sysData.temps[i];
-        int y = displayYPositions[i];
+        int y = sensorY[i];
 
         if (!display_is_valid_temperature(temp)) continue;
 
@@ -247,8 +247,9 @@ void resetDisplayState(uint8_t newMode) {
     guildColorState = 0;
     Serial.println("   ✓ Цветовое состояние сброшено в ЗЕЛЁНЫЙ");
 
-    if (sensors[3].found) {
-      float currentGuildTemp = sensors[3].temp;
+    // Гильза теперь индекс 4
+    if (sensors[4].found) {
+      float currentGuildTemp = sensors[4].temp;
       if (display_is_valid_temperature(currentGuildTemp)) {
         guildBaseTemp = currentGuildTemp;
         Serial.printf("   ✓ Базовая температура гильзы: %.2f°C\n", guildBaseTemp);
@@ -262,8 +263,8 @@ void resetDisplayState(uint8_t newMode) {
     }
   }
 
-  // Сброс кэша (только для температуры)
-  for (int i = 0; i < 4; i++) {
+  // Сброс кэша (6 датчиков)
+  for (int i = 0; i < 6; i++) {
     lastDisplayTemps[i] = -1000.0f;
   }
   lastTimeString = "";
