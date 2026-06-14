@@ -82,13 +82,28 @@ extern String lastTimeString;          // Кэш времени для MODE1
 extern String lastMode2TimeString;     // Кэш времени для MODE2
 extern bool displayInitialized;        // Флаг инициализации дисплея
 
-// Константы для дисплея
+// Константы для дисплея (существующие)
 extern const char* sensorNames[4];
 extern int bigFontHeight;
 extern int deltaFontHeight;
 extern int smallFontHeight;
 extern int maxTempWidth;
 extern const int displayYPositions[4];
+
+// ============================================================================
+// НОВЫЕ: ПАРАМЕТРЫ ОТРИСОВКИ ДАТЧИКОВ (ЯВНЫЕ КООРДИНАТЫ И ШРИФТЫ)
+// ============================================================================
+extern const int sensorX[6];     // X-координаты для датчиков 0-5
+extern const int sensorY[6];     // Y-координаты для датчиков 0-5
+extern const int sensorFont[6];  // Номера шрифтов для датчиков 0-5
+
+// ============================================================================
+// НОВЫЕ: ПРЕДРАССЧИТАННЫЕ РАЗМЕРЫ ДЛЯ ОЧИСТКИ ОБЛАСТИ
+// ============================================================================
+extern int bigFontHeightClear;      // Высота шрифта FONT_BIG (для очистки)
+extern int bigTempWidthClear;       // Ширина строки "00.00" для FONT_BIG (+10)
+extern int deltaFontHeightClear;    // Высота шрифта FONT_DELTA (для очистки)
+extern int deltaTempWidthClear;     // Ширина строки "00.00" для FONT_DELTA (+10)
 
 // Энкодер и интерфейс
 extern uint8_t systemState;

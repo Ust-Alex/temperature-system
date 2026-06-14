@@ -3,12 +3,12 @@
  * ФАЙЛ: display_modes.cpp
  * ФУНКЦИИ ОТРИСОВКИ ДЛЯ РАЗЛИЧНЫХ РЕЖИМОВ РАБОТЫ
  * 
- * ВЕРСИЯ: 3.0 (ДЕЛЬТА ПОЛНОСТЬЮ УДАЛЕНА)
+ * ВЕРСИЯ: 4.0 (ЯВНАЯ ОТРИСОВКА КАЖДОГО ДАТЧИКА)
  * 
  * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
- * - Удалены все параметры delta из функций отрисовки
- * - Удалены вызовы display_clear_delta_area() и display_draw_delta()
- * - Функции теперь отображают только температуру
+ * - Удалена функция display_draw_temperature() (отрисовка прямо здесь)
+ * - Используются массивы sensorX, sensorY, sensorFont для каждого датчика
+ * - Очистка области с передачей правильного шрифта
  * ============================================================================
  */
 
@@ -57,11 +57,26 @@ void display_mode1_draw_sensor(int idx, int y, float temp) {
   const uint16_t BG_COLOR = COLOR_BLUE;
   const uint16_t TEXT_COLOR = COLOR_WHITE;
 
-  // Очистка области температуры
-  display_clear_temperature_area(y, BG_COLOR);
+  // Очистка области с учётом шрифта
+  display_clear_temperature_area(y, BG_COLOR, sensorFont[idx]);
 
-  // Отрисовка температуры
-  display_draw_temperature(y, temp, TEXT_COLOR, BG_COLOR);
+  // Установка шрифта и цвета
+  tft.setTextFont(sensorFont[idx]);
+  tft.setTextColor(TEXT_COLOR, BG_COLOR);
+  
+  // Явные координаты из массива
+  tft.setCursor(sensorX[idx], sensorY[idx]);
+
+  // Печать температуры
+  if (!display_is_valid_temperature(temp)) {
+    tft.print("--.--");
+  } else {
+    if (temp < 10.0f && temp >= 0) {
+      tft.printf("0%.2f", temp);
+    } else {
+      tft.printf("%.2f", temp);
+    }
+  }
 }
 
 // ============================================================================
@@ -70,9 +85,24 @@ void display_mode1_draw_sensor(int idx, int y, float temp) {
 
 void display_mode2_draw_sensor(int idx, int y, float temp, 
                                uint16_t bgColor, uint16_t textColor) {
-  // Очистка области температуры
-  display_clear_temperature_area(y, bgColor);
+  // Очистка области с учётом шрифта
+  display_clear_temperature_area(y, bgColor, sensorFont[idx]);
 
-  // Отрисовка температуры
-  display_draw_temperature(y, temp, textColor, bgColor);
+  // Установка шрифта и цвета
+  tft.setTextFont(sensorFont[idx]);
+  tft.setTextColor(textColor, bgColor);
+  
+  // Явные координаты из массива
+  tft.setCursor(sensorX[idx], sensorY[idx]);
+
+  // Печать температуры
+  if (!display_is_valid_temperature(temp)) {
+    tft.print("--.--");
+  } else {
+    if (temp < 10.0f && temp >= 0) {
+      tft.printf("0%.2f", temp);
+    } else {
+      tft.printf("%.2f", temp);
+    }
+  }
 }

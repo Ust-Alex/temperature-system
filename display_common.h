@@ -21,44 +21,12 @@ bool display_is_valid_temperature(float temp);
 /**
  * ОЧИСТКА ОБЛАСТИ ОТОБРАЖЕНИЯ ТЕМПЕРАТУРЫ
  * Затирает прямоугольник, где выводится температура, цветом фона
+ * Размер прямоугольника зависит от переданного шрифта
  * 
  * @param y - вертикальная координата области датчика
  * @param bgColor - цвет фона для заливки
+ * @param font - шрифт, используемый для температуры (FONT_BIG или FONT_DELTA)
  */
-void display_clear_temperature_area(int y, uint16_t bgColor);
-
-/**
- * ОЧИСТКА ОБЛАСТИ ОТОБРАЖЕНИЯ ДЕЛЬТЫ
- * Затирает прямоугольник, где выводится дельта, цветом фона
- * Автоматически рассчитывает позицию по ширине текста
- * 
- * @param y - вертикальная координата области датчика
- * @param deltaStr - строка с дельтой (для расчёта ширины)
- * @param bgColor - цвет фона для заливки
- */
-void display_clear_delta_area(int y, const char* deltaStr, uint16_t bgColor);
-
-/**
- * ОТРИСОВКА ТЕМПЕРАТУРЫ
- * Выводит значение температуры в заданной позиции с учётом формата
- * Для значений 0-9 добавляет ведущий ноль (например, "08.23")
- * 
- * @param y - вертикальная координата области датчика
- * @param temp - значение температуры для отображения
- * @param textColor - цвет текста
- * @param bgColor - цвет фона (для заливки фона текста)
- */
-void display_draw_temperature(int y, float temp, uint16_t textColor, uint16_t bgColor);
-
-/**
- * ОТРИСОВКА ДЕЛЬТЫ
- * Выводит значение дельты со знаком (+/-) в правой части области датчика
- * 
- * @param y - вертикальная координата области датчика
- * @param delta - значение дельты для отображения
- * @param textColor - цвет текста
- * @param bgColor - цвет фона (для заливки фона текста)
- */
-void display_draw_delta(int y, float delta, uint16_t textColor, uint16_t bgColor);
+void display_clear_temperature_area(int y, uint16_t bgColor, int font);
 
 #endif // DISPLAY_COMMON_H
