@@ -1,73 +1,80 @@
+/**
+ * ============================================================================
+ * @file eeprom_settings.h
+ * @brief ЗАГОЛОВОЧНЫЙ ФАЙЛ ДЛЯ РАБОТЫ С EEPROM (НАСТРОЙКИ)
+ * @version 2.0 (ДОБАВЛЕНЫ НАСТРОЙКИ WI-FI)
+ * 
+ * ХРАНИМЫЕ НАСТРОЙКИ:
+ * - Режим калибровки (вкл/выкл)
+ * - Коэффициенты калибровки (offset) для 6 датчиков
+ * - Эталонный датчик для калибровки
+ * - Пороги (зелёный/жёлтый/красный)
+ * - Гистерезис
+ * - Громкость MP3
+ * - Wi-Fi настройки: SSID, пароль
+ * - Флаг наличия настроек Wi-Fi
+ * ============================================================================
+ */
+
 #ifndef EEPROM_SETTINGS_H
 #define EEPROM_SETTINGS_H
 
 #include <Arduino.h>
-#include <EEPROM.h>
 
 // ============================================================================
-// СТРУКТУРА НАСТРОЕК (ВСЕ ПАРАМЕТРЫ СИСТЕМЫ)
+// КОНСТАНТЫ EEPROM
+// ============================================================================
+#define EEPROM_SIZE 512
+#define SETTINGS_MAGIC 0x55AA  // Магическое число для проверки валидности
+
+// ============================================================================
+// СТРУКТУРА НАСТРОЕК
 // ============================================================================
 typedef struct {
-  // Заголовок и версия
-  uint16_t magic;           // Магическое число для проверки (0xAA55)
-  uint8_t version;          // Версия структуры (для совместимости)
+  uint16_t magic;           // Магическое число (проверка валидности)
+  uint8_t version;          // Версия настроек
   
   // Калибровка
-  float calibrationOffsets[4];  // Поправки для датчиков 0-3
-  uint8_t referenceSensor;      // Датчик-эталон
+  bool calibEnabled;        // Включена ли калибровка
+  float offsets[6];         // Смещения для 6 датчиков
+  uint8_t referenceSensor;  // Индекс эталонного датчика (0-5)
   
-  // Цветовые пороги
-  float greenThreshold;     // Порог зелёный→жёлтый
-  float yellowThreshold;    // Порог жёлтый→красный
-  float hysteresis;         // Гистерезис
+  // Пороги
+  float greenThreshold;
+  float yellowThreshold;
+  float hysteresis;
   
-  // MP3 настройки (НОВОЕ)
-  uint8_t mp3Volume;        // Громкость MP3 (0-30)
+  // Громкость MP3
+  uint8_t mp3Volume;
   
-  // WiFi (для будущего)
-  char wifiSSID[32];
-  char wifiPassword[64];
+  // Wi-Fi настройки
+  char wifiSSID[32];        // Имя сети (макс. 32 символа)
+  char wifiPassword[64];    // Пароль (макс. 64 символа)
+  bool wifiConfigured;      // Флаг: есть ли сохранённые настройки Wi-Fi
   
-  // MQTT (для будущего)
-  char mqttServer[64];
-  uint16_t mqttPort;
-  char mqttUser[32];
-  char mqttPassword[32];
-  
-  // Флаги
-  bool calibrationEnabled;  // Включена ли калибровка
-  bool wifiEnabled;         // Включён ли WiFi
-  bool mqttEnabled;         // Включён ли MQTT
-  
-  // Резерв
-  uint8_t reserved[32];     // На будущее
-} SystemSettings_t;
+  // Статический IP (опционально)
+  bool useStaticIP;
+  uint8_t staticIP[4];
+  uint8_t staticGateway[4];
+  uint8_t staticSubnet[4];
+} Settings_t;
 
 // ============================================================================
-// ИНИЦИАЛИЗАЦИЯ
+// ОСНОВНЫЕ ФУНКЦИИ
 // ============================================================================
-void settings_init();                    // Загрузить или создать настройки по умолчанию
-void settings_save();                     // Сохранить в EEPROM
-void settings_reset();                    // Сбросить на defaults
+void settings_init();                    // Инициализация EEPROM и загрузка настроек
+void settings_save();                    // Сохранение настроек в EEPROM
+void settings_reset();                   // Сброс настроек к значениям по умолчанию
 
-// ============================================================================
-// ДОСТУП К НАСТРОЙКАМ
-// ============================================================================
-SystemSettings_t* settings_get();         // Получить указатель на текущие настройки
-
-// ============================================================================
-// КАЛИБРОВКА
-// ============================================================================
-float settings_get_offset(int idx);       // Получить поправку для датчика
-void settings_set_offset(int idx, float offset); // Установить поправку
-void settings_set_reference(int idx);     // Установить эталонный датчик
-int settings_get_reference();              // Получить эталонный датчик
+// Калибровка
 bool settings_get_calibration_enabled();
 void settings_set_calibration_enabled(bool enabled);
+float settings_get_offset(int idx);
+void settings_set_offset(int idx, float offset);
+int settings_get_reference();
+void settings_set_reference(int idx);
 
-// ============================================================================
-// ЦВЕТОВЫЕ ПОРОГИ
-// ============================================================================
+// Пороги
 float settings_get_green_threshold();
 void settings_set_green_threshold(float value);
 float settings_get_yellow_threshold();
@@ -75,15 +82,21 @@ void settings_set_yellow_threshold(float value);
 float settings_get_hysteresis();
 void settings_set_hysteresis(float value);
 
-// ============================================================================
-// MP3 ГРОМКОСТЬ (НОВЫЕ ФУНКЦИИ)
-// ============================================================================
+// Громкость MP3
 uint8_t settings_get_mp3_volume();
-void settings_set_mp3_volume(uint8_t vol);
+void settings_set_mp3_volume(uint8_t volume);
 
 // ============================================================================
-// СЛУЖЕБНЫЕ ФУНКЦИИ
+// НОВЫЕ ФУНКЦИИ ДЛЯ НАСТРОЕК WI-FI
 // ============================================================================
-void settings_print();                     // Вывести все настройки в Serial
+bool settings_has_wifi();                // Есть ли сохранённые настройки Wi-Fi
+String settings_get_ssid();              // Получить SSID
+String settings_get_password();          // Получить пароль
+void settings_save_wifi(const char* ssid, const char* password);  // Сохранить настройки
+void settings_clear_wifi();              // Очистить настройки Wi-Fi
 
-#endif
+// Статический IP
+bool settings_get_static_ip(uint8_t* ip, uint8_t* gateway, uint8_t* subnet);
+void settings_set_static_ip(uint8_t* ip, uint8_t* gateway, uint8_t* subnet);
+
+#endif // EEPROM_SETTINGS_H

@@ -50,4 +50,9 @@ void drawWiFiInfoScreen();
 void drawWiFiInfoScreen();
 void updateWiFiSelection(uint8_t selectedItem);
 
+// ============================================================================
+// НОВАЯ ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ СТАТУСА WI-FI
+// ============================================================================
+void drawWiFiStatus();
+
 #endif

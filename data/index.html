@@ -42,6 +42,26 @@
             <button class="scale-btn" id="btn5m" data-range="5м">5м</button>
             <button class="scale-btn active" id="btn1m" data-range="1м">1м</button>
             
+            <!-- ================================================================
+                 ФОРМА НАСТРОЙКИ WI-FI
+                 ================================================================ -->
+            <div class="panel-wifi" id="panelWifi">
+                <div class="wifi-status" id="wifiStatus">
+                    <span id="wifiModeLabel">Режим: </span>
+                    <span id="wifiModeValue">--</span>
+                </div>
+                <div class="wifi-ip" id="wifiIP">
+                    <span>IP: </span>
+                    <span id="wifiIPValue">--</span>
+                </div>
+                <div class="wifi-form">
+                    <input type="text" id="wifiSSID" placeholder="SSID" maxlength="32">
+                    <input type="password" id="wifiPassword" placeholder="Пароль" maxlength="64">
+                    <button class="wifi-btn" id="wifiConnectBtn">Подключить</button>
+                    <button class="wifi-btn wifi-btn-ap" id="wifiAPBtn">AP режим</button>
+                </div>
+            </div>
+            
             <!-- Нижний блок -->
             <div class="panel-bottom">
                 <div class="panel-range-item">

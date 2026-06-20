@@ -13,7 +13,7 @@
 #include "mode2_logic.h"
 #include "eeprom_settings.h"
 #include "calibration_simple.h"
-
+#include "wifi_mqtt.h"
 
 extern TFT_eSPI tft;
 extern float guildBaseTemp;
@@ -507,4 +507,60 @@ void drawCalibStatus() {
   tft.setTextColor(COLOR_BLACK, COLOR_WHITE);
   tft.setCursor(100, 208);
   tft.print("BACK");
+}
+
+// ============================================================================
+// ОТОБРАЖЕНИЕ СТАТУСА WI-FI
+// ============================================================================
+void drawWiFiStatus() {
+    clearScreen(COLOR_BLACK);
+    tft.setTextFont(FONT_DELTA);
+    tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+
+    int y = 30;
+    tft.setCursor(10, y);
+    tft.println("=== WI-FI STATUS ===");
+    y += 35;
+
+    // Режим
+    tft.setCursor(10, y);
+    tft.print("Mode: ");
+    if (wifiModeAP) {
+        tft.setTextColor(COLOR_YELLOW, COLOR_BLACK);
+        tft.println("AP (Access Point)");
+        tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+    } else {
+        tft.setTextColor(COLOR_GREEN, COLOR_BLACK);
+        tft.println("STA (Client)");
+        tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+    }
+    y += 30;
+
+    // SSID
+    tft.setCursor(10, y);
+    tft.print("SSID: ");
+    if (wifiModeAP) {
+        tft.println(AP_SSID);
+    } else {
+        tft.println(WiFi.SSID());
+    }
+    y += 30;
+
+    // IP-адрес
+    tft.setCursor(10, y);
+    tft.print("IP:   ");
+    if (wifiModeAP) {
+        tft.println("192.168.4.1");
+    } else {
+        tft.println(WiFi.localIP().toString());
+    }
+    y += 40;
+
+    // Подсказка
+    tft.setTextColor(COLOR_CYAN, COLOR_BLACK);
+    tft.setCursor(10, y);
+    tft.println("HOLD RIGHT to reset to AP");
+    tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
+
+    tft.setTextFont(FONT_BIG);
 }

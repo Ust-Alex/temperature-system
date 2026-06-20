@@ -86,7 +86,7 @@ body {
     align-items: center;
     font-size: 22px;
     font-weight: bold;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
 }
 
 /* ============================================ */
@@ -98,7 +98,7 @@ body {
     background: #333;
     border: none;
     color: white;
-    font-size: 18px;
+    font-size: 14px;
     border-radius: 2px;
     cursor: pointer;
     margin: 1px 0;
@@ -109,6 +109,100 @@ body {
 .scale-btn:hover { background: #3a3a3a; }
 .scale-btn:active { background: #4a4a4a; }
 .scale-btn.active { background: #0066cc !important; }
+
+/* ============================================ */
+/* WI-FI ПАНЕЛЬ (НОВАЯ) */
+/* ============================================ */
+.panel-wifi {
+    width: 80px;
+    background: #2a2a2a;
+    border-radius: 4px;
+    padding: 4px 0;
+    margin-top: 4px;
+    border-top: 1px solid #444;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.wifi-status, .wifi-ip {
+    width: 100%;
+    text-align: center;
+    font-size: 8px;
+    color: #aaa;
+}
+
+.wifi-status span, .wifi-ip span {
+    display: inline;
+}
+
+#wifiModeValue {
+    font-weight: bold;
+}
+
+#wifiIPValue {
+    color: #00FF00;
+}
+
+.wifi-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 0;
+}
+
+.wifi-form input {
+    width: 70px;
+    background: #333;
+    border: 1px solid #555;
+    color: white;
+    padding: 2px;
+    border-radius: 3px;
+    font-size: 9px;
+    text-align: center;
+}
+
+.wifi-form input::placeholder {
+    color: #666;
+    font-size: 8px;
+}
+
+.wifi-btn {
+    width: 70px;
+    height: 18px;
+    background: #0066cc;
+    border: none;
+    color: white;
+    font-size: 9px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    outline: none;
+}
+
+.wifi-btn:hover {
+    background: #0077ee;
+}
+
+.wifi-btn:active {
+    background: #0055aa;
+}
+
+.wifi-btn-ap {
+    background: #cc6600;
+}
+
+.wifi-btn-ap:hover {
+    background: #ee7700;
+}
+
+.wifi-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 
 /* ============================================ */
 /* НИЖНИЙ БЛОК (ПОЛЯ ВВОДА) */

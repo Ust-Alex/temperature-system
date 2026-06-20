@@ -62,7 +62,7 @@ void initHardware() {
   tft.setCursor(5, 100);
   tft.print("esp32ust.local");
   tft.setCursor(5, 150);
-  tft.print("192.168.1.11");
+  tft.print("192.168.4.1");
   delay(1000);
 
   // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE (4 ШИНЫ)

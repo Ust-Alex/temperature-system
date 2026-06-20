@@ -2,7 +2,7 @@
  * ============================================================================
  * @file script.js
  * @brief ВЕБ-ИНТЕРФЕЙС ДЛЯ СИСТЕМЫ КОНТРОЛЯ ТЕМПЕРАТУРЫ
- * @version 6.0 (6 ДАТЧИКОВ, РАСШИРЕННЫЙ БУФЕР, УЛУЧШЕННАЯ СТРУКТУРА)
+ * @version 6.1 (6 ДАТЧИКОВ, УПРАВЛЕНИЕ WI-FI)
  * 
  * СТРУКТУРА:
  * 1. КОНФИГУРАЦИЯ
@@ -13,7 +13,8 @@
  * 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
  * 7. WEBSOCKET И WATCHDOG
  * 8. УПРАВЛЕНИЕ МАСШТАБОМ
- * 9. ЗАПУСК
+ * 9. УПРАВЛЕНИЕ WI-FI (НОВОЕ)
+ * 10. ЗАПУСК
  * ============================================================================
  */
 
@@ -49,24 +50,8 @@ const CONFIG = {
         MAX_TEMP: 90,
         MIN_RANGE: 0.1
     },
-    // НАЗВАНИЯ ДАТЧИКОВ (ДЛЯ ГРАФИКА)
-    DATASET_NAMES: [
-        'Выход',
-        '100см',
-        '75см',
-        '50см',
-        'Гильза',
-        'Куб'
-    ],
-    // ЦВЕТА ДЛЯ ГРАФИКА (СООТВЕТСТВУЮТ КАРТОЧКАМ)
-    DATASET_COLORS: [
-        '#FF00FF', // Выход
-        '#FFA500', // 100см
-        '#00FFFF', // 75см
-        '#FFFF00', // 50см
-        '#00FF00', // Гильза
-        '#FF4500'  // Куб
-    ]
+    DATASET_NAMES: ['Выход', '100см', '75см', '50см', 'Гильза', 'Куб'],
+    DATASET_COLORS: ['#FF00FF', '#FFA500', '#00FFFF', '#FFFF00', '#00FF00', '#FF4500']
 };
 
 // ============================================================================
@@ -80,12 +65,8 @@ const state = {
     reconnectStopped: false,
     lastDataTime: Date.now(),
     pageVisible: true,
-    
-    // БУФЕРИЗАЦИЯ ДЛЯ СИНХРОНИЗАЦИИ ГРАФИКА
     pendingData: null,
     chartUpdateTimer: null,
-    
-    // БУФЕР ИСТОРИИ (КОЛЬЦЕВОЙ МАССИВ, 6 ДАТЧИКОВ)
     dataBuffer: {
         time: new Array(CONFIG.MAX_POINTS).fill(''),
         temps: [
@@ -100,7 +81,6 @@ const state = {
         count: 0,
         lastTime: ''
     },
-    
     lastValues: {
         mode: -1,
         color: -1,
@@ -108,9 +88,9 @@ const state = {
         baseTemp: null,
         temps: [null, null, null, null, null, null]
     },
-    
     currentRange: 60,
-    chart: null
+    chart: null,
+    wifiStatus: { mode: '--', ip: '--' }
 };
 
 // ============================================================================
@@ -228,6 +208,19 @@ const dom = {
         const buttonName = Object.keys(CONFIG.RANGES).find(k => CONFIG.RANGES[k] === state.currentRange) || '?';
         this.get('debugActive').textContent = buttonName;
         this.get('debugLastTime').textContent = state.dataBuffer.lastTime || '--:--:--';
+    },
+    
+    updateWifiStatus(mode, ip) {
+        const modeEl = this.get('wifiModeValue');
+        const ipEl = this.get('wifiIPValue');
+        if (modeEl) {
+            modeEl.textContent = mode || '--';
+            modeEl.style.color = mode === 'AP' ? '#FFA500' : (mode === 'STA' ? '#00FF00' : '#666');
+        }
+        if (ipEl) {
+            ipEl.textContent = ip || '--';
+        }
+        state.wifiStatus = { mode, ip };
     }
 };
 
@@ -237,7 +230,6 @@ const dom = {
 function initChart() {
     const ctx = dom.get('tempChart').getContext('2d');
     
-    // 6 НАБОРОВ ДАННЫХ (ПО ЧИСЛУ ДАТЧИКОВ)
     const datasets = CONFIG.DATASET_NAMES.map((name, i) => {
         const color = CONFIG.DATASET_COLORS[i];
         return {
@@ -247,11 +239,10 @@ function initChart() {
             borderWidth: 1.5,
             tension: 0.3,
             pointRadius: 0,
-            order: i === 4 ? 1 : 2  // Гильза (индекс 4) поверх остальных
+            order: i === 4 ? 1 : 2
         };
     });
     
-    // ДОБАВЛЯЕМ ЛИНИЮ БАЗОВОЙ ТЕМПЕРАТУРЫ (ОТДЕЛЬНЫЙ НАБОР)
     datasets.push({
         label: 'База',
         data: [],
@@ -266,10 +257,7 @@ function initChart() {
     
     state.chart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: [],
-            datasets: datasets
-        },
+        data: { labels: [], datasets: datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -326,9 +314,6 @@ function initChart() {
     });
 }
 
-/**
- * ОБНОВЛЕНИЕ ГРАФИКА ИЗ БУФЕРА (6 ЛИНИЙ + БАЗА)
- */
 function performChartUpdate() {
     const desiredPoints = state.currentRange;
     const totalPoints = state.dataBuffer.count;
@@ -341,7 +326,6 @@ function performChartUpdate() {
     const baseTemp = state.lastValues.baseTemp;
     const availableData = Math.min(totalPoints, desiredPoints);
     
-    // Обновляем последние availableData точек
     for (let i = 0; i < availableData; i++) {
         const dataIdx = (state.dataBuffer.index - availableData + i + CONFIG.MAX_POINTS) % CONFIG.MAX_POINTS;
         const chartIdx = desiredPoints - availableData + i;
@@ -350,16 +334,13 @@ function performChartUpdate() {
             state.chart.data.labels[chartIdx] = state.dataBuffer.time[dataIdx];
         }
         
-        // 6 линий датчиков
         for (let s = 0; s < 6; s++) {
             state.chart.data.datasets[s].data[chartIdx] = state.dataBuffer.temps[s][dataIdx];
         }
         
-        // Линия базы (7-й набор данных)
         state.chart.data.datasets[6].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
     }
     
-    // Очищаем левую часть (при смене масштаба)
     for (let i = 0; i < desiredPoints - availableData; i++) {
         state.chart.data.labels[i] = '';
         state.chart.data.datasets.forEach(ds => ds.data[i] = null);
@@ -369,9 +350,6 @@ function performChartUpdate() {
     dom.updateDebugInfo();
 }
 
-/**
- * ЗАПИСЬ ДАННЫХ В БУФЕР (6 ДАТЧИКОВ)
- */
 function commitDataToBuffer(temps) {
     if (!temps || !Array.isArray(temps) || temps.length < 6) return;
     
@@ -391,7 +369,7 @@ function commitDataToBuffer(temps) {
 }
 
 // ============================================================================
-// 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА (КАРТОЧКИ, РЕЖИМ, ЗВУК)
+// 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
 // ============================================================================
 function updateModeDisplay(mode, color, timeStr, baseTemp) {
     const modeDisplay = dom.get('modeDisplay');
@@ -423,31 +401,21 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
     Object.assign(last, { mode, color, time: timeStr, baseTemp });
 }
 
-/**
- * ОСНОВНАЯ ФУНКЦИЯ ОБРАБОТКИ ДАННЫХ ОТ ESP
- * Ожидает: { temps: [6 значений], mode, color, time, baseTemp }
- */
 function processData(data) {
     state.lastDataTime = Date.now();
     
-    // 1. КАРТОЧКИ (6 штук)
     if (data.temps && Array.isArray(data.temps) && data.temps.length >= 6) {
         for (let i = 0; i < 6; i++) {
             dom.updateCard(`card${i}`, data.temps[i], i);
         }
-    }
-    
-    // 2. РЕЖИМ И ЦВЕТ
-    updateModeDisplay(data.mode, data.color, data.time || '00:00', data.baseTemp);
-    
-    // 3. БУФЕРИЗАЦИЯ ДЛЯ ГРАФИКА
-    if (data.temps && Array.isArray(data.temps) && data.temps.length >= 6) {
         state.pendingData = data.temps;
     }
+    
+    updateModeDisplay(data.mode, data.color, data.time || '00:00', data.baseTemp);
 }
 
 // ============================================================================
-// 7. WEBSOCKET С WATCHDOG
+// 7. WEBSOCKET И WATCHDOG
 // ============================================================================
 function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
@@ -518,6 +486,10 @@ function connectWebSocket() {
         state.reconnectStopped = false;
         state.lastDataTime = Date.now();
         if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
+        // Запрашиваем статус Wi-Fi при подключении
+        if (state.socket.readyState === WebSocket.OPEN) {
+            state.socket.send('WIFI_STATUS');
+        }
     };
     
     state.socket.onclose = () => {
@@ -529,7 +501,19 @@ function connectWebSocket() {
     state.socket.onmessage = (event) => {
         state.lastDataTime = Date.now();
         try {
-            processData(JSON.parse(event.data));
+            const data = JSON.parse(event.data);
+            if (data.mode && data.ip) {
+                // Это Wi-Fi статус
+                dom.updateWifiStatus(data.mode, data.ip);
+            } else if (data.temps) {
+                processData(data);
+            } else if (data.status) {
+                console.log('[WiFi]', data.status);
+                const connectBtn = dom.get('wifiConnectBtn');
+                const apBtn = dom.get('wifiAPBtn');
+                if (connectBtn) { connectBtn.textContent = 'Подключить'; connectBtn.disabled = false; }
+                if (apBtn) { apBtn.textContent = 'AP режим'; apBtn.disabled = false; }
+            }
         } catch(e) {
             console.error('[WS] Ошибка парсинга:', e);
         }
@@ -600,7 +584,57 @@ function setupCleanup() {
 }
 
 // ============================================================================
-// 9. ЗАПУСК
+// 9. УПРАВЛЕНИЕ WI-FI (НОВОЕ)
+// ============================================================================
+const wifi = {
+    init() {
+        this.setupForm();
+        // Запросим статус при загрузке (через WebSocket)
+        setTimeout(() => {
+            if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+                state.socket.send('WIFI_STATUS');
+            }
+        }, 1000);
+    },
+    
+    setupForm() {
+        const connectBtn = dom.get('wifiConnectBtn');
+        const apBtn = dom.get('wifiAPBtn');
+        const ssidInput = dom.get('wifiSSID');
+        const passInput = dom.get('wifiPassword');
+        
+        if (connectBtn) {
+            connectBtn.addEventListener('click', () => {
+                const ssid = ssidInput.value.trim();
+                const pass = passInput.value.trim();
+                if (ssid.length === 0) {
+                    alert('Введите SSID');
+                    return;
+                }
+                if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+                    state.socket.send(`WIFI_SET:${ssid}:${pass}`);
+                    connectBtn.textContent = 'Сохранение...';
+                    connectBtn.disabled = true;
+                }
+            });
+        }
+        
+        if (apBtn) {
+            apBtn.addEventListener('click', () => {
+                if (confirm('Переключиться в режим AP (точка доступа)?')) {
+                    if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+                        state.socket.send('WIFI_AP');
+                        apBtn.textContent = 'Переключение...';
+                        apBtn.disabled = true;
+                    }
+                }
+            });
+        }
+    }
+};
+
+// ============================================================================
+// 10. ЗАПУСК
 // ============================================================================
 window.onload = () => {
     initChart();
@@ -611,10 +645,10 @@ window.onload = () => {
     startWatchdog();
     setupVisibilityHandler();
     setupCleanup();
+    wifi.init();
     
     state.lastDataTime = Date.now();
     
-    // ПРИНУДИТЕЛЬНЫЙ ТАЙМЕР ОБНОВЛЕНИЯ ГРАФИКА (1 раз в секунду)
     setInterval(() => {
         if (state.pendingData) {
             commitDataToBuffer(state.pendingData);
@@ -623,5 +657,5 @@ window.onload = () => {
         performChartUpdate();
     }, CONFIG.CHART_SYNC_INTERVAL);
     
-    console.log('[SYSTEM] Запуск версии 6.0 (6 датчиков, улучшенная структура)');
+    console.log('[SYSTEM] Запуск версии 6.1 (6 датчиков, управление Wi-Fi)');
 };

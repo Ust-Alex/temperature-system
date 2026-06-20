@@ -6,29 +6,19 @@
 #include <WebSocketsServer.h>
 #include <FS.h>
 
-// Явно указываем пространство имён fs
-using namespace fs;
-
 // ============================================================================
-// ВАЖНО! ПРАВИЛЬНЫЙ ПОРЯДОК ПОДКЛЮЧЕНИЯ БИБЛИОТЕК
+// ПОДКЛЮЧЕНИЕ БИБЛИОТЕК (ГЛОБАЛЬНАЯ УСТАНОВКА)
 // ============================================================================
 
-// 1. Сначала WiFiManager (он тянет стандартный WebServer)
-#include <DNSServer.h>
-#include <WiFiManager.h>
-
-// 2. Определяем WEBSERVER_H, чтобы ESPAsyncWebServer не создавал свои HTTP-константы
-#define WEBSERVER_H
-
-// 3. Теперь подключаем ESPAsyncWebServer — он видит WEBSERVER_H и не конфликтует
-// #include "ESPAsyncWebServer.h" //V-3.10.0
-#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h" // V-3.10.0
+// ESPAsyncWebServer — глобально установленная библиотека
+#include <ESPAsyncWebServer.h>
 
 // ============================================================================
-// КОНСТАНТЫ WiFi
+// КОНСТАНТЫ
 // ============================================================================
 #define WEBSOCKET_PORT 8080
-#define CONFIG_BUTTON_PIN 0   // GPIO0 (кнопка BOOT)
+#define AP_SSID "TermoESP32"       // Имя точки доступа по умолчанию
+#define AP_IP_ADDR 192,168,200,1   // IP-адрес точки доступа
 
 // ============================================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -36,6 +26,7 @@ using namespace fs;
 extern WebSocketsServer webSocket;
 extern AsyncWebServer server;
 extern bool wifiClientConnected;
+extern bool wifiModeAP;  // true = AP, false = STA
 
 // ============================================================================
 // ФУНКЦИИ
@@ -45,6 +36,9 @@ void initWebSocket();
 void sendTemperaturesToClients();
 void broadcastJSON(const char* json);
 void taskWiFi(void* pvParameters);
-void startWiFiConfig();
 
-#endif
+// Функции управления режимом Wi-Fi
+void startAP();
+bool connectSTA();
+
+#endif // WIFI_MQTT_H
