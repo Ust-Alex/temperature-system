@@ -2,13 +2,17 @@
  * ============================================================================
  * ФАЙЛ: sensors.cpp
  * МОДУЛЬ УПРАВЛЕНИЯ ДАТЧИКАМИ DS18B20 (4 ШИНЫ, 6 ДАТЧИКОВ)
- * ВЕРСИЯ: 3.0
+ * ВЕРСИЯ: 4.0 (РАЗДЕЛЕНИЕ ФИЛЬТРОВ)
  * 
  * РАСПРЕДЕЛЕНИЕ ДАТЧИКОВ ПО ШИНАМ:
  * - Шина A (GPIO4)  → датчик гильзы (индекс 4) - БЕЗ привязки по адресу
  * - Шина B (GPIO16) → датчики стенок (индексы 1,2,3) - ПРИВЯЗКА по адресу
  * - Шина C (GPIO21) → датчик выхода (индекс 0) - БЕЗ привязки по адресу
  * - Шина D (GPIO22) → датчик куба (индекс 5) - БЕЗ привязки по адресу
+ * 
+ * ФИЛЬТРАЦИЯ:
+ * - Скользящее среднее (буфер 5) → для гильзы (4), выхода (0), куба (5)
+ * - Медианный фильтр (буфер 5) → для стенок (1,2,3) - убирает "выстрелы"
  * ============================================================================
  */
 
@@ -18,11 +22,17 @@
 #include "calibration_simple.h"
 
 // ============================================================================
-// ЛОКАЛЬНЫЕ ДАННЫЕ ДЛЯ ФИЛЬТРА
+// ЛОКАЛЬНЫЕ ДАННЫЕ ДЛЯ ФИЛЬТРОВ
 // ============================================================================
-static float filterBuffer[6][5];
-static int filterIndex[6] = {0};
-static float filterSum[6] = {0};
+
+// Буфер для скользящего среднего (гильза, выход, куб) — индексы 0,4,5
+static float avgBuffer[6][5];
+static int avgIndex[6] = {0};
+static float avgSum[6] = {0};
+
+// Буфер для медианного фильтра (стенки) — индексы 1,2,3
+static float medBuffer[3][5];
+static int medIndex[3] = {0};
 
 // ============================================================================
 // АДРЕСА ДАТЧИКОВ ДЛЯ ШИНЫ B (СТЕНКИ, ИНДЕКСЫ 1,2,3)
@@ -34,13 +44,70 @@ static const uint8_t KNOWN_ADDR_WALLS[3][8] = {
 };
 
 // ============================================================================
-// ИНИЦИАЛИЗАЦИЯ ФИЛЬТРА
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: СОРТИРОВКА ДЛЯ МЕДИАНЫ
 // ============================================================================
-static void init_filter() {
+static void sort5(float* arr) {
+    // Простая сортировка вставками для 5 элементов
+    for (int i = 1; i < 5; i++) {
+        float key = arr[i];
+        int j = i - 1;
+        while (j >= 0 && arr[j] > key) {
+            arr[j + 1] = arr[j];
+            j--;
+        }
+        arr[j + 1] = key;
+    }
+}
+
+// ============================================================================
+// МЕДИАННЫЙ ФИЛЬТР (ДЛЯ СТЕНОК)
+// ============================================================================
+static float filterMedian(int sensorIdx, float newValue) {
+    // sensorIdx: 1,2,3 → преобразуем в индекс для medBuffer (0,1,2)
+    int idx = sensorIdx - 1;
+    
+    // Записываем новое значение в буфер
+    medBuffer[idx][medIndex[idx]] = newValue;
+    medIndex[idx] = (medIndex[idx] + 1) % 5;
+    
+    // Копируем буфер во временный массив для сортировки
+    float temp[5];
+    for (int i = 0; i < 5; i++) {
+        temp[i] = medBuffer[idx][i];
+    }
+    
+    // Сортируем и возвращаем медиану (элемент с индексом 2)
+    sort5(temp);
+    return temp[2];
+}
+
+// ============================================================================
+// ФИЛЬТР СКОЛЬЗЯЩЕГО СРЕДНЕГО (ДЛЯ ГИЛЬЗЫ, ВЫХОДА, КУБА)
+// ============================================================================
+static float filterMovingAverage(int sensorIdx, float newValue) {
+    avgSum[sensorIdx] -= avgBuffer[sensorIdx][avgIndex[sensorIdx]];
+    avgBuffer[sensorIdx][avgIndex[sensorIdx]] = newValue;
+    avgSum[sensorIdx] += newValue;
+    avgIndex[sensorIdx] = (avgIndex[sensorIdx] + 1) % 5;
+    
+    return avgSum[sensorIdx] / 5.0f;
+}
+
+// ============================================================================
+// ИНИЦИАЛИЗАЦИЯ ФИЛЬТРОВ
+// ============================================================================
+static void init_filters() {
+    // Инициализация скользящего среднего
     for (int i = 0; i < 6; i++) {
-        for (int j = 0; j < 5; j++) filterBuffer[i][j] = 18.0f;
-        filterSum[i] = 90.0f;
-        filterIndex[i] = 0;
+        for (int j = 0; j < 5; j++) avgBuffer[i][j] = 18.0f;
+        avgSum[i] = 90.0f;
+        avgIndex[i] = 0;
+    }
+    
+    // Инициализация медианного фильтра
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 5; j++) medBuffer[i][j] = 18.0f;
+        medIndex[i] = 0;
     }
 }
 
@@ -60,7 +127,7 @@ void sensors_init() {
     sensorsC.setResolution(RESOLUTION);
     sensorsD.setResolution(RESOLUTION);
     
-    init_filter();
+    init_filters();
     sensors_scan_all();
     Serial.println("[SENSORS] OK (4 шины, 6 датчиков)");
 }
@@ -174,14 +241,21 @@ void sensors_update_all() {
     for (int i = 0; i < 6; i++) {
         if (!sensors[i].found || !isValidTemperature(sensors[i].temp)) continue;
 
-        // Фильтр скользящего среднего (5 значений)
-        filterSum[i] -= filterBuffer[i][filterIndex[i]];
-        filterBuffer[i][filterIndex[i]] = sensors[i].temp;
-        filterSum[i] += sensors[i].temp;
-        filterIndex[i] = (filterIndex[i] + 1) % 5;
+        float filteredTemp;
+        
+        // ================================================================
+        // ВЫБОР ФИЛЬТРА В ЗАВИСИМОСТИ ОТ ТИПА ДАТЧИКА
+        // ================================================================
+        if (i == 1 || i == 2 || i == 3) {
+            // Стенки — медианный фильтр (убирает выбросы)
+            filteredTemp = filterMedian(i, sensors[i].temp);
+        } else {
+            // Гильза, выход, куб — скользящее среднее (плавное сглаживание)
+            filteredTemp = filterMovingAverage(i, sensors[i].temp);
+        }
         
         // Сохраняем отфильтрованное и калибруем
-        sensors[i].temp = filterSum[i] / 5.0f;
+        sensors[i].temp = filteredTemp;
         sensors[i].temp = applyCalibration(i, sensors[i].temp);
     }
 }

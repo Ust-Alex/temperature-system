@@ -5,33 +5,26 @@
     padding: 0;
 }
 
-body {
-    font-family: 'Arial', sans-serif;
-    background: #1a1a1a;
-    color: #fff;
+html, body {
     width: 100vw;
     height: 100vh;
-    overflow: hidden;
-    position: relative;
-}
-
-/* ============================================ */
-/* БАЗОВЫЕ ОКНА */
-/* ============================================ */
-.window {
-    position: absolute;
+    overflow: hidden;          /* Без прокрутки */
     background: #1a1a1a;
-    border: 1px solid #333;
-    overflow: hidden;
+    color: #fff;
+    font-family: 'Arial', sans-serif;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
 }
 
 /* ============================================ */
-/* ВЕРХНЕЕ ОКНО */
+/* 1. ВЕРХНЕЕ ОКНО (фиксированная высота)       */
 /* ============================================ */
 .window-header {
-    top: 0;
-    left: 0;
-    right: 0;
+    flex-shrink: 0;           /* Не сжимается */
     height: 20px;
     border-bottom: 1px solid #333;
 }
@@ -53,15 +46,22 @@ body {
 .mode1-red { background: #cc0000; }
 
 /* ============================================ */
-/* ЛЕВОЕ ОКНО */
+/* 2. ОСНОВНАЯ ЧАСТЬ (левая панель + график)    */
 /* ============================================ */
+.main-area {
+    flex: 1;                   /* Занимает всё оставшееся пространство */
+    display: flex;
+    flex-direction: row;
+    min-height: 0;            /* Важно для корректного сжатия */
+}
+
+/* ----- Левая панель (фиксированная ширина) ----- */
 .window-left {
-    top: 20px;
-    left: 0;
-    bottom: 30px;
+    flex-shrink: 0;           /* Не сжимается */
     width: 90px;
     border-right: 1px solid #333;
-    overflow-y: auto;
+    overflow-y: auto;         /* Если содержимое не влезает — появится скролл */
+    background: #1a1a1a;
 }
 
 .left-panel {
@@ -73,9 +73,56 @@ body {
     gap: 4px;
 }
 
+/* ----- График (занимает всё оставшееся место) ----- */
+.window-graph {
+    flex: 1;                   /* Растягивается на всю ширину */
+    background: #1a1a1a;
+    min-height: 0;
+}
+
+#tempChart {
+    width: 100%;
+    height: 100%;
+    touch-action: none;        /* Запрещаем браузеру перехватывать жесты */
+}
+
 /* ============================================ */
-/* КАРТОЧКИ (6 ШТУК) */
+/* 3. НИЖНЕЕ ОКНО (отладка)                    */
 /* ============================================ */
+.window-debug {
+    flex-shrink: 0;           /* Не сжимается */
+    height: 30px;
+    border-top: 1px solid #333;
+    background: #1a1a1a;
+}
+
+.debug-bar {
+    width: 100%;
+    height: 100%;
+    padding: 0 8px;
+    font-family: monospace;
+    font-size: 10px;
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.debug-bar span {
+    white-space: nowrap;
+}
+
+.debug-value {
+    color: #ffaa00;
+    font-weight: bold;
+}
+
+/* ============================================ */
+/* ЭЛЕМЕНТЫ ВНУТРИ ЛЕВОЙ ПАНЕЛИ                */
+/* ============================================ */
+
+/* Карточки температур */
 .temp-card {
     width: 80px;
     height: 25px;
@@ -89,9 +136,7 @@ body {
     margin-bottom: 1px;
 }
 
-/* ============================================ */
-/* КНОПКИ МАСШТАБА И ВРЕМЕНИ */
-/* ============================================ */
+/* Кнопки масштаба */
 .scale-btn {
     width: 80px;
     height: 25px;
@@ -105,14 +150,11 @@ body {
     transition: background-color 0.2s;
     outline: none;
 }
-
 .scale-btn:hover { background: #3a3a3a; }
 .scale-btn:active { background: #4a4a4a; }
 .scale-btn.active { background: #0066cc !important; }
 
-/* ============================================ */
-/* WI-FI ПАНЕЛЬ (НОВАЯ) */
-/* ============================================ */
+/* Wi-Fi панель */
 .panel-wifi {
     width: 80px;
     background: #2a2a2a;
@@ -132,18 +174,8 @@ body {
     font-size: 8px;
     color: #aaa;
 }
-
-.wifi-status span, .wifi-ip span {
-    display: inline;
-}
-
-#wifiModeValue {
-    font-weight: bold;
-}
-
-#wifiIPValue {
-    color: #00FF00;
-}
+#wifiModeValue { font-weight: bold; }
+#wifiIPValue { color: #00FF00; }
 
 .wifi-form {
     width: 100%;
@@ -164,7 +196,6 @@ body {
     font-size: 9px;
     text-align: center;
 }
-
 .wifi-form input::placeholder {
     color: #666;
     font-size: 8px;
@@ -182,31 +213,16 @@ body {
     transition: background-color 0.2s;
     outline: none;
 }
-
-.wifi-btn:hover {
-    background: #0077ee;
-}
-
-.wifi-btn:active {
-    background: #0055aa;
-}
-
-.wifi-btn-ap {
-    background: #cc6600;
-}
-
-.wifi-btn-ap:hover {
-    background: #ee7700;
-}
-
+.wifi-btn:hover { background: #0077ee; }
+.wifi-btn:active { background: #0055aa; }
+.wifi-btn-ap { background: #cc6600; }
+.wifi-btn-ap:hover { background: #ee7700; }
 .wifi-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* ============================================ */
-/* НИЖНИЙ БЛОК (ПОЛЯ ВВОДА) */
-/* ============================================ */
+/* Нижний блок (поля ввода) */
 .panel-bottom {
     margin-top: 4px;
     width: 100%;
@@ -225,13 +241,11 @@ body {
     padding: 2px 0;
     text-align: center;
 }
-
 .panel-range-item label {
     color: #aaa;
     font-size: 9px;
     display: block;
 }
-
 .panel-range-item input {
     width: 70px;
     background: #333;
@@ -243,23 +257,18 @@ body {
     text-align: center;
 }
 
-/* ============================================ */
-/* УБИРАЕМ СТРЕЛОЧКИ (СПИННЕРЫ) У ВСЕХ ЧИСЛОВЫХ ПОЛЕЙ */
-/* ============================================ */
+/* Убираем стрелочки у числовых полей */
 input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
-
 input[type=number] {
     -moz-appearance: textfield;
     appearance: textfield;
 }
 
-/* ============================================ */
-/* СТАТУС ПОДКЛЮЧЕНИЯ */
-/* ============================================ */
+/* Статус подключения */
 .panel-status {
     width: 80px;
     background: #2a2a2a;
@@ -270,7 +279,6 @@ input[type=number] {
     justify-content: center;
     gap: 3px;
 }
-
 .panel-status-dot {
     width: 8px;
     height: 8px;
@@ -289,7 +297,6 @@ input[type=number] {
     box-shadow: 0 0 4px #4CAF50;
     animation: none;
 }
-
 .panel-status-text.online { color: #4CAF50; animation: none; }
 
 .panel-status-dot.offline-yellow {
@@ -297,7 +304,6 @@ input[type=number] {
     box-shadow: 0 0 4px #ffaa00;
     animation: pulse 1.5s infinite;
 }
-
 .panel-status-text.offline-yellow {
     color: #ffaa00;
     animation: pulse 1.5s infinite;
@@ -308,63 +314,11 @@ input[type=number] {
     box-shadow: 0 0 4px #f44336;
     animation: pulse 1.5s infinite;
 }
-
 .panel-status-text.offline {
     color: #f44336;
     animation: pulse 1.5s infinite;
 }
-
 .panel-status-text {
     font-size: 10px;
-    font-weight: bold;
-}
-
-/* ============================================ */
-/* ОКНО ГРАФИКА */
-/* ============================================ */
-.window-graph {
-    top: 20px;
-    left: 90px;
-    right: 0;
-    bottom: 30px;
-    background: #1a1a1a;
-}
-
-#tempChart {
-    width: 100%;
-    height: 100%;
-}
-
-/* ============================================ */
-/* НИЖНЕЕ ОКНО (ОТЛАДКА) */
-/* ============================================ */
-.window-debug {
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 30px;
-    border-top: 1px solid #333;
-}
-
-.debug-bar {
-    width: 100%;
-    height: 100%;
-    background: transparent;
-    padding: 0 8px;
-    font-family: monospace;
-    font-size: 10px;
-    color: #aaa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-.debug-bar span {
-    white-space: nowrap;
-}
-
-.debug-value {
-    color: #ffaa00;
     font-weight: bold;
 }
