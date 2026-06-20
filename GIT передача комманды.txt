@@ -5,8 +5,30 @@ git commit -m "Fix FreeRTOS tasks"
 git push origin main
 
 
+,**Шпаргалка: обновление файлов веб-интерфейса (Arduino IDE + LittleFS)**
 
+1. **Подготовка:**
+   - Все файлы сайта (`index.html`, `style.css`, `script.js`, библиотеки)
+   лежат в папке **`data`** внутри папки твоего скетча.
+   - **Закрой Serial Monitor** (он блокирует порт).
 
+2. **Загрузка:**
+   - Нажми `Ctrl+Shift+P` → откроется палитра команд.
+   - Начни вводить `Upload LittleFS` → выбери `Upload LittleFS to Pico/ESP8266/ESP32`.
+   - Нажми Enter. Жди завершения загрузки.
+
+3. **Проверка:**
+   - После загрузки сбрось ESP32 (кнопка RESET или перезагрузка питания).
+   - Открой в браузере IP-адрес устройства (`192.168.4.1` в режиме AP, или IP от роутера в STA).
+   - Обнови страницу (`Ctrl+F5`), чтобы увидеть изменения.
+
+4. **Если забыл:**
+   - Проверь, что выбран правильный порт (`Инструменты → Порт`).
+   - Serial Monitor закрыт.
+   - Папка `data` существует и не пустая.
+
+**Важно:**  
+При загрузке LittleFS **стираются все старые файлы** и записываются новые из папки `data`. Так что если в папке `data` нет какого-то файла — он будет удалён с ESP32.
 https://github.com/Ust-Alex/temperature-system/blob/main/display_engine.cpp
 https://github.com/Ust-Alex/temperature-system/blob/main/display_engine.h
 https://github.com/Ust-Alex/temperature-system/blob/main/hardware_control.cpp

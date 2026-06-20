@@ -1,26 +1,30 @@
 /**
  * ============================================================================
- * ФАЙЛ: script.js
- * ВЕБ-ИНТЕРФЕЙС ДЛЯ СИСТЕМЫ КОНТРОЛЯ ТЕМПЕРАТУРЫ
+ * @file script.js
+ * @brief ВЕБ-ИНТЕРФЕЙС ДЛЯ СИСТЕМЫ КОНТРОЛЯ ТЕМПЕРАТУРЫ
+ * @version 6.0 (6 ДАТЧИКОВ, РАСШИРЕННЫЙ БУФЕР, УЛУЧШЕННАЯ СТРУКТУРА)
  * 
- * ВЕРСИЯ: 5.2 (ПРИНУДИТЕЛЬНАЯ СИНХРОНИЗАЦИЯ ГРАФИКА)
- * 
- * ОСОБЕННОСТИ:
- * - График обновляется строго раз в секунду по независимому таймеру
- * - Карточки температур обновляются мгновенно
- * - Данные буферизуются и применяются к графику синхронно
- * - Полное устранение "пиков" при нестабильном WiFi
+ * СТРУКТУРА:
+ * 1. КОНФИГУРАЦИЯ
+ * 2. СОСТОЯНИЕ
+ * 3. ЗВУКОВОЕ СОПРОВОЖДЕНИЕ
+ * 4. DOM УТИЛИТЫ
+ * 5. ГРАФИК (CHART.JS)
+ * 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
+ * 7. WEBSOCKET И WATCHDOG
+ * 8. УПРАВЛЕНИЕ МАСШТАБОМ
+ * 9. ЗАПУСК
  * ============================================================================
  */
 
-// ============================================
+// ============================================================================
 // 1. КОНФИГУРАЦИЯ
-// ============================================
+// ============================================================================
 const CONFIG = {
     MAX_POINTS: 7200,
     WS_URL: 'ws://' + window.location.hostname + ':8080',
     MEASURE_INTERVAL: 1166,
-    CHART_SYNC_INTERVAL: 1000,           // Строго 1 секунда (принудительный таймер)
+    CHART_SYNC_INTERVAL: 1000,
     FAST_UPDATE_INTERVAL: 500,
     RANGES: {
         '1ч': 3600,
@@ -44,12 +48,30 @@ const CONFIG = {
         MIN_TEMP: 20,
         MAX_TEMP: 90,
         MIN_RANGE: 0.1
-    }
+    },
+    // НАЗВАНИЯ ДАТЧИКОВ (ДЛЯ ГРАФИКА)
+    DATASET_NAMES: [
+        'Выход',
+        '100см',
+        '75см',
+        '50см',
+        'Гильза',
+        'Куб'
+    ],
+    // ЦВЕТА ДЛЯ ГРАФИКА (СООТВЕТСТВУЮТ КАРТОЧКАМ)
+    DATASET_COLORS: [
+        '#FF00FF', // Выход
+        '#FFA500', // 100см
+        '#00FFFF', // 75см
+        '#FFFF00', // 50см
+        '#00FF00', // Гильза
+        '#FF4500'  // Куб
+    ]
 };
 
-// ============================================
+// ============================================================================
 // 2. СОСТОЯНИЕ
-// ============================================
+// ============================================================================
 const state = {
     socket: null,
     reconnectAttempts: 0,
@@ -63,13 +85,17 @@ const state = {
     pendingData: null,
     chartUpdateTimer: null,
     
-    // БУФЕР ИСТОРИИ (кольцевой массив)
+    // БУФЕР ИСТОРИИ (КОЛЬЦЕВОЙ МАССИВ, 6 ДАТЧИКОВ)
     dataBuffer: {
         time: new Array(CONFIG.MAX_POINTS).fill(''),
-        guild: new Array(CONFIG.MAX_POINTS).fill(null),
-        wall50: new Array(CONFIG.MAX_POINTS).fill(null),
-        wall75: new Array(CONFIG.MAX_POINTS).fill(null),
-        wall100: new Array(CONFIG.MAX_POINTS).fill(null),
+        temps: [
+            new Array(CONFIG.MAX_POINTS).fill(null),
+            new Array(CONFIG.MAX_POINTS).fill(null),
+            new Array(CONFIG.MAX_POINTS).fill(null),
+            new Array(CONFIG.MAX_POINTS).fill(null),
+            new Array(CONFIG.MAX_POINTS).fill(null),
+            new Array(CONFIG.MAX_POINTS).fill(null)
+        ],
         index: 0,
         count: 0,
         lastTime: ''
@@ -80,16 +106,16 @@ const state = {
         color: -1,
         time: '',
         baseTemp: null,
-        temps: [null, null, null, null]
+        temps: [null, null, null, null, null, null]
     },
     
     currentRange: 60,
     chart: null
 };
 
-// ============================================
+// ============================================================================
 // 3. ЗВУКОВОЕ СОПРОВОЖДЕНИЕ
-// ============================================
+// ============================================================================
 const soundManager = {
     tormazi: new Audio('/tormazi.wav'),
     zhdati: new Audio('/zhdati.wav'),
@@ -155,9 +181,9 @@ const soundManager = {
     }
 };
 
-// ============================================
+// ============================================================================
 // 4. DOM УТИЛИТЫ
-// ============================================
+// ============================================================================
 const dom = {
     get: (id) => document.getElementById(id),
     
@@ -205,32 +231,95 @@ const dom = {
     }
 };
 
-// ============================================
+// ============================================================================
 // 5. ГРАФИК (CHART.JS)
-// ============================================
+// ============================================================================
 function initChart() {
     const ctx = dom.get('tempChart').getContext('2d');
+    
+    // 6 НАБОРОВ ДАННЫХ (ПО ЧИСЛУ ДАТЧИКОВ)
+    const datasets = CONFIG.DATASET_NAMES.map((name, i) => {
+        const color = CONFIG.DATASET_COLORS[i];
+        return {
+            label: name,
+            data: [],
+            borderColor: color,
+            borderWidth: 1.5,
+            tension: 0.3,
+            pointRadius: 0,
+            order: i === 4 ? 1 : 2  // Гильза (индекс 4) поверх остальных
+        };
+    });
+    
+    // ДОБАВЛЯЕМ ЛИНИЮ БАЗОВОЙ ТЕМПЕРАТУРЫ (ОТДЕЛЬНЫЙ НАБОР)
+    datasets.push({
+        label: 'База',
+        data: [],
+        borderColor: '#FF4500',
+        backgroundColor: '#FF4500',
+        borderWidth: 1,
+        tension: 0,
+        pointRadius: (ctx) => ctx.dataIndex % 8 === 0 ? 1 : 0,
+        showLine: false,
+        order: 0
+    });
+    
     state.chart = new Chart(ctx, {
         type: 'line',
-        data: { labels: [], datasets: [
-            { label: 'Гильза', data: [], borderColor: '#00FF00', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 1 },
-            { label: '50см', data: [], borderColor: '#FFFF00', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 2 },
-            { label: '75см', data: [], borderColor: '#00FFFF', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 2 },
-            { label: '100см', data: [], borderColor: '#FFA500', borderWidth: 1.5, tension: 0.3, pointRadius: 0, order: 2 },
-            { label: 'База', data: [], borderColor: '#FF4500', backgroundColor: '#FF4500', borderWidth: 1, tension: 0, pointRadius: ctx => ctx.dataIndex % 8 === 0 ? 1 : 0, showLine: false, order: 0 }
-        ] },
+        data: {
+            labels: [],
+            datasets: datasets
+        },
         options: {
-            responsive: true, maintainAspectRatio: false, animation: { duration: 100 }, spanGaps: true,
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 100 },
+            spanGaps: true,
             scales: {
-                y: { min: CONFIG.ZOOM_LIMITS.MIN_TEMP, max: CONFIG.ZOOM_LIMITS.MAX_TEMP, grid: { color: '#333' }, ticks: { color: '#ccc', stepSize: 0.5, callback: v => v.toFixed(1) } },
-                x: { ticks: { color: '#ccc', maxTicksLimit: 8 } }
+                y: {
+                    min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
+                    max: CONFIG.ZOOM_LIMITS.MAX_TEMP,
+                    grid: { color: '#333' },
+                    ticks: { color: '#ccc', stepSize: 0.5, callback: v => v.toFixed(1) }
+                },
+                x: {
+                    ticks: { color: '#ccc', maxTicksLimit: 8 }
+                }
             },
             plugins: {
                 legend: { display: false },
                 zoom: {
-                    pan: { enabled: true, mode: 'y', threshold: 5, onPan: () => { if (state.chart) { const y = state.chart.scales.y; dom.get('minTemp').value = y.min.toFixed(1); dom.get('maxTemp').value = y.max.toFixed(1); } } },
-                    zoom: { wheel: { enabled: false }, pinch: { enabled: true }, mode: 'y', onZoom: () => { if (state.chart) { const y = state.chart.scales.y; dom.get('minTemp').value = y.min.toFixed(1); dom.get('maxTemp').value = y.max.toFixed(1); } } },
-                    limits: { y: { min: CONFIG.ZOOM_LIMITS.MIN_TEMP, max: CONFIG.ZOOM_LIMITS.MAX_TEMP, minRange: CONFIG.ZOOM_LIMITS.MIN_RANGE } }
+                    pan: {
+                        enabled: true,
+                        mode: 'y',
+                        threshold: 5,
+                        onPan: () => {
+                            if (state.chart) {
+                                const y = state.chart.scales.y;
+                                dom.get('minTemp').value = y.min.toFixed(1);
+                                dom.get('maxTemp').value = y.max.toFixed(1);
+                            }
+                        }
+                    },
+                    zoom: {
+                        wheel: { enabled: false },
+                        pinch: { enabled: true },
+                        mode: 'y',
+                        onZoom: () => {
+                            if (state.chart) {
+                                const y = state.chart.scales.y;
+                                dom.get('minTemp').value = y.min.toFixed(1);
+                                dom.get('maxTemp').value = y.max.toFixed(1);
+                            }
+                        }
+                    },
+                    limits: {
+                        y: {
+                            min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
+                            max: CONFIG.ZOOM_LIMITS.MAX_TEMP,
+                            minRange: CONFIG.ZOOM_LIMITS.MIN_RANGE
+                        }
+                    }
                 }
             }
         }
@@ -238,8 +327,7 @@ function initChart() {
 }
 
 /**
- * ОБНОВЛЕНИЕ ГРАФИКА ИЗ БУФЕРА ДАННЫХ
- * Перерисовывает все линии графика одновременно
+ * ОБНОВЛЕНИЕ ГРАФИКА ИЗ БУФЕРА (6 ЛИНИЙ + БАЗА)
  */
 function performChartUpdate() {
     const desiredPoints = state.currentRange;
@@ -253,7 +341,7 @@ function performChartUpdate() {
     const baseTemp = state.lastValues.baseTemp;
     const availableData = Math.min(totalPoints, desiredPoints);
     
-    // Обновляем только последние availableData точек (справа)
+    // Обновляем последние availableData точек
     for (let i = 0; i < availableData; i++) {
         const dataIdx = (state.dataBuffer.index - availableData + i + CONFIG.MAX_POINTS) % CONFIG.MAX_POINTS;
         const chartIdx = desiredPoints - availableData + i;
@@ -262,11 +350,13 @@ function performChartUpdate() {
             state.chart.data.labels[chartIdx] = state.dataBuffer.time[dataIdx];
         }
         
-        state.chart.data.datasets[0].data[chartIdx] = state.dataBuffer.guild[dataIdx];
-        state.chart.data.datasets[1].data[chartIdx] = state.dataBuffer.wall50[dataIdx];
-        state.chart.data.datasets[2].data[chartIdx] = state.dataBuffer.wall75[dataIdx];
-        state.chart.data.datasets[3].data[chartIdx] = state.dataBuffer.wall100[dataIdx];
-        state.chart.data.datasets[4].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
+        // 6 линий датчиков
+        for (let s = 0; s < 6; s++) {
+            state.chart.data.datasets[s].data[chartIdx] = state.dataBuffer.temps[s][dataIdx];
+        }
+        
+        // Линия базы (7-й набор данных)
+        state.chart.data.datasets[6].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
     }
     
     // Очищаем левую часть (при смене масштаба)
@@ -280,10 +370,10 @@ function performChartUpdate() {
 }
 
 /**
- * ЗАПИСЬ ДАННЫХ В БУФЕР ИСТОРИИ
+ * ЗАПИСЬ ДАННЫХ В БУФЕР (6 ДАТЧИКОВ)
  */
-function commitDataToBuffer(data) {
-    if (!data) return;
+function commitDataToBuffer(temps) {
+    if (!temps || !Array.isArray(temps) || temps.length < 6) return;
     
     const now = new Date();
     const timeLabel = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
@@ -292,18 +382,17 @@ function commitDataToBuffer(data) {
     const idx = state.dataBuffer.index;
     
     state.dataBuffer.time[idx] = timeLabel;
-    state.dataBuffer.guild[idx] = data.guild;
-    state.dataBuffer.wall50[idx] = data.wall50;
-    state.dataBuffer.wall75[idx] = data.wall75;
-    state.dataBuffer.wall100[idx] = data.wall100;
+    for (let s = 0; s < 6; s++) {
+        state.dataBuffer.temps[s][idx] = temps[s];
+    }
     
     state.dataBuffer.index = (idx + 1) % CONFIG.MAX_POINTS;
     if (state.dataBuffer.count < CONFIG.MAX_POINTS) state.dataBuffer.count++;
 }
 
-// ============================================
-// 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА (карточки, режим, звук)
-// ============================================
+// ============================================================================
+// 6. ОБНОВЛЕНИЕ ИНТЕРФЕЙСА (КАРТОЧКИ, РЕЖИМ, ЗВУК)
+// ============================================================================
 function updateModeDisplay(mode, color, timeStr, baseTemp) {
     const modeDisplay = dom.get('modeDisplay');
     if (!modeDisplay) return;
@@ -336,27 +425,30 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
 
 /**
  * ОСНОВНАЯ ФУНКЦИЯ ОБРАБОТКИ ДАННЫХ ОТ ESP
- * Карточки обновляются мгновенно, данные буферизуются для графика
+ * Ожидает: { temps: [6 значений], mode, color, time, baseTemp }
  */
 function processData(data) {
     state.lastDataTime = Date.now();
     
-    // 1. КАРТОЧКИ — МГНОВЕННО
-    dom.updateCard('card0', data.guild, 0);
-    dom.updateCard('card1', data.wall50, 1);
-    dom.updateCard('card2', data.wall75, 2);
-    dom.updateCard('card3', data.wall100, 3);
+    // 1. КАРТОЧКИ (6 штук)
+    if (data.temps && Array.isArray(data.temps) && data.temps.length >= 6) {
+        for (let i = 0; i < 6; i++) {
+            dom.updateCard(`card${i}`, data.temps[i], i);
+        }
+    }
     
-    // 2. РЕЖИМ И ЦВЕТ — МГНОВЕННО
+    // 2. РЕЖИМ И ЦВЕТ
     updateModeDisplay(data.mode, data.color, data.time || '00:00', data.baseTemp);
     
-    // 3. БУФЕРИЗАЦИЯ ДЛЯ ГРАФИКА (будет применена по таймеру)
-    state.pendingData = data;
+    // 3. БУФЕРИЗАЦИЯ ДЛЯ ГРАФИКА
+    if (data.temps && Array.isArray(data.temps) && data.temps.length >= 6) {
+        state.pendingData = data.temps;
+    }
 }
 
-// ============================================
+// ============================================================================
 // 7. WEBSOCKET С WATCHDOG
-// ============================================
+// ============================================================================
 function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
     state.watchdogTimer = setInterval(() => {
@@ -449,9 +541,9 @@ function connectWebSocket() {
     };
 }
 
-// ============================================
+// ============================================================================
 // 8. УПРАВЛЕНИЕ МАСШТАБОМ
-// ============================================
+// ============================================================================
 function setupControls() {
     document.querySelectorAll('.scale-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -507,9 +599,9 @@ function setupCleanup() {
     });
 }
 
-// ============================================
+// ============================================================================
 // 9. ЗАПУСК
-// ============================================
+// ============================================================================
 window.onload = () => {
     initChart();
     setupControls();
@@ -522,20 +614,14 @@ window.onload = () => {
     
     state.lastDataTime = Date.now();
     
-    // ========================================
-    // ПРИНУДИТЕЛЬНЫЙ ТАЙМЕР ОБНОВЛЕНИЯ ГРАФИКА
-    // Обновляет график строго раз в секунду,
-    // независимо от прихода пакетов от ESP
-    // ========================================
+    // ПРИНУДИТЕЛЬНЫЙ ТАЙМЕР ОБНОВЛЕНИЯ ГРАФИКА (1 раз в секунду)
     setInterval(() => {
         if (state.pendingData) {
-            // Если есть новые данные — записываем в буфер
             commitDataToBuffer(state.pendingData);
             state.pendingData = null;
         }
-        // Обновляем график из буфера (все линии одновременно)
         performChartUpdate();
     }, CONFIG.CHART_SYNC_INTERVAL);
     
-    console.log('[SYSTEM] Запуск версии 5.2 (принудительная синхронизация)');
+    console.log('[SYSTEM] Запуск версии 6.0 (6 датчиков, улучшенная структура)');
 };

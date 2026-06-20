@@ -7,11 +7,9 @@
     
     <!-- Chart.js -->
     <script src="chart.umd.min.js"></script>
-    
-    <!-- ДОБАВЛЕНО: Hammer.js для распознавания жестов -->
+    <!-- Hammer.js для распознавания жестов -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-    
-    <!-- ДОБАВЛЕНО: Плагин зума для Chart.js -->
+    <!-- Плагин зума для Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     
     <link rel="stylesheet" href="style.css">
@@ -27,11 +25,15 @@
     <!-- Левое окно (панель управления) -->
     <div class="window window-left" id="windowLeft">
         <div class="left-panel">
-            <!-- Карточки температур -->
-            <div class="temp-card" id="card3" style="color: #FFA500;">--.--</div>
-            <div class="temp-card" id="card2" style="color: #00FFFF;">--.--</div>
-            <div class="temp-card" id="card1" style="color: #FFFF00;">--.--</div>
-            <div class="temp-card" id="card0" style="color: #00FF00;">--.--</div>
+            <!-- ================================================================
+                 6 КАРТОЧЕК ТЕМПЕРАТУР (НОВЫЙ ПОРЯДОК)
+                 ================================================================ -->
+            <div class="temp-card" id="card0" style="color: #FF00FF;">--.--</div>   <!-- 0: ВЫХОД -->
+            <div class="temp-card" id="card1" style="color: #FFA500;">--.--</div>   <!-- 1: СТЕНКА 100см -->
+            <div class="temp-card" id="card2" style="color: #00FFFF;">--.--</div>   <!-- 2: СТЕНКА 75см -->
+            <div class="temp-card" id="card3" style="color: #FFFF00;">--.--</div>   <!-- 3: СТЕНКА 50см -->
+            <div class="temp-card" id="card4" style="color: #00FF00;">--.--</div>   <!-- 4: ГИЛЬЗА -->
+            <div class="temp-card" id="card5" style="color: #FF4500;">--.--</div>   <!-- 5: КУБ -->
             
             <!-- Кнопки масштаба -->
             <button class="scale-btn" id="btn1h" data-range="1ч">1ч</button>

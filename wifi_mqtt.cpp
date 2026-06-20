@@ -2,7 +2,7 @@
  * ============================================================================
  * @file wifi_mqtt.cpp
  * @brief Веб-сервер + WebSocket + WiFiManager + mDNS
- * @version 3.3 (ДЕЛЬТА НЕ ИСПОЛЬЗУЕТСЯ - БЕЗ ИЗМЕНЕНИЙ)
+ * @version 4.0 (6 ДАТЧИКОВ, JSON С МАССИВОМ temps[6])
  * 
  * ОСОБЕННОСТИ:
  * - WiFiManager для подключения к роутеру (режим STA)
@@ -11,9 +11,11 @@
  * - WebSocket на порту 8080 передаёт данные в реальном времени
  * - Кнопка BOOT (GPIO0) для сброса настроек WiFi
  * 
- * ПРИМЕЧАНИЕ:
- * - Дельта температур в JSON не передаётся (удалена из системы)
- * - Поле "guild" при отсутствии датчика гильзы = 0.00
+ * ИЗМЕНЕНИЯ ВЕРСИИ 4.0:
+ * - JSON теперь содержит массив temps[6] вместо отдельных полей
+ * - Порядок датчиков: 0-ВЫХОД, 1-СТЕНКА100, 2-СТЕНКА75, 3-СТЕНКА50, 4-ГИЛЬЗА, 5-КУБ
+ * - При отсутствии гильзы (индекс 4) в массиве передаётся 0.00
+ * - Дельта удалена
  * ============================================================================
  */
 
@@ -26,10 +28,10 @@
 #include <WiFiManager.h>
 #include <WebSocketsServer.h>
 // #include "ESPAsyncWebServer.h" // V-3.10.0
-#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h"  // V-3.10.0
+#include "src/ESP_Async_WebServer/src/ESPAsyncWebServer.h" // V-3.10.0
 
 #include <LittleFS.h>
-#include <ESPmDNS.h>  // ДЛЯ mDNS (доступ по имени)
+#include <ESPmDNS.h>          // ДЛЯ mDNS (доступ по имени)
 
 // ============================================================================
 // ПРОЕКТНЫЕ ЗАГОЛОВКИ
@@ -52,30 +54,40 @@ extern uint32_t timeStartMs;
 extern bool timeIsCounting;
 
 // ============================================================================
-// ФОРМИРОВАНИЕ JSON С ДАННЫМИ ТЕМПЕРАТУР (БЕЗ ДЕЛЬТЫ)
+// ФОРМИРОВАНИЕ JSON С ДАННЫМИ ТЕМПЕРАТУР (6 ДАТЧИКОВ)
 // ============================================================================
 static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
-  float t0 = sensors[0].temp;  // 100см
-  float t1 = sensors[1].temp;  // 75см
-  float t2 = sensors[2].temp;  // 50см
+  // ========================================================================
+  // 1. ЧТЕНИЕ ТЕМПЕРАТУР В НОВОМ ПОРЯДКЕ (0-5)
+  // ========================================================================
+  float temps[6];
+  
+  // Датчик 0: ВЫХОД (шина C, GPIO21)
+  temps[0] = sensors[0].found ? sensors[0].temp : 0.0f;
+  
+  // Датчик 1: СТЕНКА 100см (шина B, GPIO16)
+  temps[1] = sensors[1].found ? sensors[1].temp : 0.0f;
+  
+  // Датчик 2: СТЕНКА 75см (шина B, GPIO16)
+  temps[2] = sensors[2].found ? sensors[2].temp : 0.0f;
+  
+  // Датчик 3: СТЕНКА 50см (шина B, GPIO16)
+  temps[3] = sensors[3].found ? sensors[3].temp : 0.0f;
+  
+  // Датчик 4: ГИЛЬЗА (шина A, GPIO4) — если не найден, отправляем 0.00
+  temps[4] = sensors[4].found ? sensors[4].temp : 0.0f;
+  
+  // Датчик 5: КУБ (шина D, GPIO22)
+  temps[5] = sensors[5].found ? sensors[5].temp : 0.0f;
 
   // ========================================================================
-  // ДЛЯ ГИЛЬЗЫ: проверяем наличие датчика
-  // Если датчик не найден — отправляем 0.00, иначе — его температуру
+  // 2. РЕЖИМ, ЦВЕТ, ВРЕМЯ, БАЗОВАЯ ТЕМПЕРАТУРА
   // ========================================================================
-  float t3;
-  if (sensors[3].found) {
-    t3 = sensors[3].temp;
-  } else {
-    t3 = 0.0f;  // веб-страница покажет 0.00
-  }
-
   int mode = sysData.mode;
   int color = guildColorState;
 
   // Время в формате ЧЧ:ММ
   char timeStr[6] = "00:00";
-
   if (mode == 0) {
     if (timeIsCounting) {
       uint32_t elapsed = millis() - timeStartMs;
@@ -92,19 +104,20 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
 
   float baseTemp = guildBaseTemp;
 
-  // JSON без дельты
+  // ========================================================================
+  // 3. ФОРМИРОВАНИЕ JSON С МАССИВОМ temps[6]
+  // ========================================================================
+  // Формат: {"temps":[25.0,24.5,24.3,24.1,23.8,23.5],"mode":1,"color":0,"time":"12:30","baseTemp":23.0}
   snprintf(buffer, bufferSize,
            "{"
-           "\"guild\":%.2f,"
-           "\"wall100\":%.2f,"
-           "\"wall75\":%.2f,"
-           "\"wall50\":%.2f,"
+           "\"temps\":[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f],"
            "\"mode\":%d,"
            "\"color\":%d,"
            "\"time\":\"%s\","
            "\"baseTemp\":%.2f"
            "}",
-           t3, t0, t1, t2, mode, color, timeStr, baseTemp);
+           temps[0], temps[1], temps[2], temps[3], temps[4], temps[5],
+           mode, color, timeStr, baseTemp);
 }
 
 // ============================================================================
@@ -191,12 +204,12 @@ void taskWiFi(void* pvParameters) {
   // 1. НАСТРОЙКА WIFIMANAGER
   // ==========================================================================
   WiFiManager wm;
-
+  
   wm.setConnectTimeout(30);        // 30 секунд на подключение
   wm.setConfigPortalTimeout(180);  // 3 минуты портал
-
+  
   Serial.println("[WiFi] Попытка подключения к сохранённой сети...");
-
+  
   // Пытаемся подключиться. Если не получается, запускается портал "TermoESP32"
   if (!wm.autoConnect("TermoESP32")) {
     Serial.println("[WiFi] ❌ Не удалось подключиться. Перезагрузка...");
@@ -239,13 +252,13 @@ void taskWiFi(void* pvParameters) {
     // Проверка кнопки BOOT (сброс настроек при удержании 3 сек)
     static uint32_t lastButtonCheck = 0;
     uint32_t now = millis();
-
+    
     if (now - lastButtonCheck > 100) {
       lastButtonCheck = now;
-
+      
       if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
         vTaskDelay(pdMS_TO_TICKS(3000));
-
+        
         if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
           Serial.println("[WiFi] Сброс настроек по кнопке");
           wm.resetSettings();
@@ -266,11 +279,13 @@ void taskWiFi(void* pvParameters) {
   }
 }
 
+// ============================================================================
+// ЗАПУСК WI-FI КОНФИГУРАТОРА (ДЛЯ МЕНЮ SETUP)
+// ============================================================================
 void startWiFiConfig() {
   // Очищаем экран и выводим сообщение
   tft.fillScreen(COLOR_BLACK);
-  tft.setTextFont(FONT_DELTA);  // простой шрифт с буквами
-  // tft.setTextFont(FONT_SMALL);  // простой шрифт с буквами
+  tft.setTextFont(FONT_DELTA);
   tft.setTextColor(COLOR_WHITE, COLOR_BLACK);
   tft.setCursor(57, 50);
   tft.print("Connect to");
