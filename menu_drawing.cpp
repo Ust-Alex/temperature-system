@@ -13,8 +13,12 @@
 #include "mode2_logic.h"
 #include "eeprom_settings.h"
 #include "calibration_simple.h"
-#include "wifi_mqtt.h"
+#include "wifi_config.h"
+#include "wifi_manager.h"
+#include "wifi_utils.h"
+#include "web_server.h"
 
+extern bool wifiModeAP;
 extern TFT_eSPI tft;
 extern float guildBaseTemp;
 

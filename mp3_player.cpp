@@ -17,7 +17,10 @@
 
 #include "mp3_player.h"
 #include "eeprom_settings.h"
-#include "wifi_mqtt.h"  // ДЛЯ sendSoundCommand()
+#include "wifi_config.h"
+#include "wifi_manager.h"
+#include "wifi_utils.h"
+#include "web_server.h"
 
 extern HardwareSerial dfplayerSerial;
 extern DFRobotDFPlayerMini myDFPlayer;

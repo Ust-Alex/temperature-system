@@ -20,7 +20,10 @@
 #include "mp3_player.h"
 #include "calibration_simple.h"
 #include "menu_drawing.h"
-#include "wifi_mqtt.h"
+#include "wifi_config.h"
+#include "wifi_manager.h"
+#include "wifi_utils.h"
+#include "web_server.h"
 
 static MenuState_t currentState = MENU_STATE_MAIN;
 static uint32_t lastActivityTime = 0;

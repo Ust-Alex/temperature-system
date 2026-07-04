@@ -13,7 +13,10 @@
 #include "calibration_simple.h"
 #include "display_engine.h"
 #include "eeprom_settings.h"
-#include "wifi_mqtt.h"
+#include "wifi_config.h"
+#include "wifi_manager.h"
+#include "wifi_utils.h"
+#include "web_server.h"
 
 #define HEARTBEAT_INTERVAL 30000
 #define ENCODER_POLL_INTERVAL 10
