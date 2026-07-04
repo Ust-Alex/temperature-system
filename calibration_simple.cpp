@@ -1,12 +1,12 @@
 /**
  * @file calibration_simple.cpp
  * @brief Калибровка через offset. Все данные в EEPROM, локальных дублей нет.
- * @version 3.0 (ИЗМЕНЕНА: ЗАПРЕТ КАЛИБРОВКИ ПРИ ОТСУТСТВИИ ДАТЧИКА ГИЛЬЗЫ)
+ * @version 4.1 (КАЛИБРОВКА ТОЛЬКО СТЕНОК ПО ГИЛЬЗЕ)
  * 
  * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
- * - autoCalibrateAllSensors() проверяет наличие гильзы перед выполнением
- * - setReferenceSensor() не позволяет выбрать гильзу в качестве эталона, если датчик отсутствует
- * - Остальные функции безопасны и не требуют изменений
+ * - Гильза (индекс 4) — жёсткий эталон
+ * - Калибруются только стенки (индексы 1,2,3)
+ * - Выход (0) и Куб (5) не калибруются
  */
 
 #include "calibration_simple.h"
@@ -23,39 +23,47 @@ void calibration_init() {
 // ============================================================================
 void autoCalibrateAllSensors() {
   // ========================================================================
-  // ИЗМЕНЕНИЕ: ПРОВЕРКА НАЛИЧИЯ ДАТЧИКА ГИЛЬЗЫ
-  // Если датчик гильзы отсутствует, автокалибровка бессмысленна.
-  // Выводим сообщение в Serial и выходим.
+  // Проверяем наличие гильзы (эталон)
   // ========================================================================
-  if (!sensors[3].found) {
-    Serial.println("[CALIB] Невозможно выполнить авто-калибровку: датчик гильзы отсутствует");
+  if (!sensors[4].found) {
+    Serial.println("[CALIB] Невозможно выполнить калибровку: датчик гильзы (индекс 4) отсутствует");
     return;
   }
 
-  int ref = settings_get_reference();
-  if (!sensors[ref].found) {
-    Serial.println("[CALIB] Ошибка: эталон не найден");
-    return;
-  }
+  float refTemp = sensors[4].temp;
+  Serial.printf("[CALIB] Эталон: ГИЛЬЗА [4] %.2f°C\n", refTemp);
 
-  float refTemp = sensors[ref].temp;
-  Serial.printf("[CALIB] Эталон [%d] %s: %.2f°C\n", ref, sensorNames[ref], refTemp);
-
-  for (int i = 0; i < 4; i++) {
-    if (sensors[i].found && i != ref) {
+  // ========================================================================
+  // Калибруем только стенки (индексы 1,2,3)
+  // ========================================================================
+  for (int i = 1; i <= 3; i++) {
+    if (sensors[i].found) {
       float newOffset = -(sensors[i].temp - refTemp);
       settings_set_offset(i, newOffset);
       Serial.printf("  [%d] %s: offset %+.2f°C\n", i, sensorNames[i], newOffset);
+    } else {
+      Serial.printf("  [%d] %s: ДАТЧИК НЕ НАЙДЕН, пропускаем\n", i, sensorNames[i]);
     }
   }
-  settings_set_offset(ref, 0.0f);
+
+  // ========================================================================
+  // Сбрасываем offset для гильзы (эталон) и других датчиков (0,5)
+  // ========================================================================
+  settings_set_offset(4, 0.0f);  // Гильза
+  settings_set_offset(0, 0.0f);  // Выход (не калибруется)
+  settings_set_offset(5, 0.0f);  // Куб (не калибруется)
+
   settings_save();
   Serial.println("[CALIB] Готово");
 }
 
 // ============================================================================
 void setManualOffset(int idx, float offset) {
-  if (idx < 0 || idx >= 4) return;
+  // Разрешаем ручную калибровку только для стенок (1,2,3)
+  if (idx < 1 || idx > 3) {
+    Serial.println("[CALIB] Ручная калибровка разрешена только для стенок (индексы 1,2,3)");
+    return;
+  }
   settings_set_offset(idx, offset);
   settings_save();
   Serial.printf("[CALIB] [%d] %s: offset = %+.2f°C\n", idx, sensorNames[idx], offset);
@@ -63,31 +71,8 @@ void setManualOffset(int idx, float offset) {
 
 // ============================================================================
 void setReferenceSensor(int idx) {
-  if (idx < 0 || idx >= 4) {
-    Serial.println("[CALIB] Ошибка: индекс должен быть 0-3");
-    return;
-  }
-
-  if (!sensors[idx].found) {
-    Serial.printf("[CALIB] Ошибка: датчик [%d] не найден\n", idx);
-    return;
-  }
-
-  // ========================================================================
-  // ИЗМЕНЕНИЕ: ЗАПРЕТ ВЫБОРА ГИЛЬЗЫ В КАЧЕСТВЕ ЭТАЛОНА ПРИ ОТСУТСТВИИ ДАТЧИКА
-  // Если индекс == 3 (гильза) и датчик отсутствует — запрещаем.
-  // (Хотя проверка sensors[idx].found выше уже отсекла бы этот случай,
-  //  но добавляем явную проверку для ясности и страховки)
-  // ========================================================================
-  if (idx == 3 && !sensors[3].found) {
-    Serial.println("[CALIB] Нельзя выбрать гильзу в качестве эталона: датчик не найден");
-    return;
-  }
-
-  settings_set_reference(idx);
-  settings_set_offset(idx, 0.0f);
-  settings_save();
-  Serial.printf("[CALIB] Новый эталон: [%d] %s\n", idx, sensorNames[idx]);
+  // Запрещаем менять эталон — гильза всегда эталон
+  Serial.println("[CALIB] Эталон всегда ГИЛЬЗА (индекс 4). Изменение запрещено.");
 }
 
 // ============================================================================
@@ -99,9 +84,13 @@ void toggleCalibration(bool enable) {
 
 // ============================================================================
 float applyCalibration(int idx, float temp) {
-  if (idx < 0 || idx >= 4) return temp;
+  if (idx < 0 || idx >= 6) return temp;
   if (!settings_get_calibration_enabled()) return temp;
-  return temp + settings_get_offset(idx);
+  // Калибровка применяется только к стенкам (1,2,3)
+  if (idx >= 1 && idx <= 3) {
+    return temp + settings_get_offset(idx);
+  }
+  return temp;  // Для гильзы, выхода и куба — без калибровки
 }
 
 // ============================================================================
@@ -110,19 +99,28 @@ void printCalibrationStatus() {
   Serial.println("СТАТУС КАЛИБРОВКИ");
   Serial.println(String(40, '='));
 
-  int ref = settings_get_reference();
-  Serial.printf("Эталон: [%d] %s\n", ref, sensorNames[ref]);
+  Serial.println("Эталон: ГИЛЬЗА [4] (фиксированный)");
   Serial.printf("Активна: %s\n", settings_get_calibration_enabled() ? "ДА" : "НЕТ");
 
-  Serial.println("Коэфф. offset:");
-  for (int i = 0; i < 4; i++) {
+  Serial.println("\nКоэфф. offset (только для стенок):");
+  for (int i = 1; i <= 3; i++) {
     if (sensors[i].found) {
       float raw = sensors[i].temp;
       float cal = applyCalibration(i, raw);
       Serial.printf("  [%d] %s: %.2f -> %.2f (offset %+.2f)\n",
                     i, sensorNames[i], raw, cal, settings_get_offset(i));
     } else {
-      // Для отсутствующих датчиков просто выводим сообщение
+      Serial.printf("  [%d] %s: ДАТЧИК НЕ НАЙДЕН\n", i, sensorNames[i]);
+    }
+  }
+
+  Serial.println("\nДругие датчики (без калибровки):");
+  int other[] = {0, 4, 5};
+  for (int j = 0; j < 3; j++) {
+    int i = other[j];
+    if (sensors[i].found) {
+      Serial.printf("  [%d] %s: %.2f°C\n", i, sensorNames[i], sensors[i].temp);
+    } else {
       Serial.printf("  [%d] %s: ДАТЧИК НЕ НАЙДЕН\n", i, sensorNames[i]);
     }
   }

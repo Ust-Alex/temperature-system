@@ -493,6 +493,7 @@ function connectWebSocket() {
         state.reconnectStopped = false;
         state.lastDataTime = Date.now();
         if (state.reconnectTimeout) clearTimeout(state.reconnectTimeout);
+        // Запрашиваем статус Wi-Fi при подключении
         if (state.socket.readyState === WebSocket.OPEN) {
             state.socket.send('WIFI_STATUS');
         }
@@ -508,62 +509,18 @@ function connectWebSocket() {
         state.lastDataTime = Date.now();
         try {
             const data = JSON.parse(event.data);
-            
-            // ================================================================
-            // 1. Wi-Fi СТАТУС
-            // ================================================================
             if (data.mode && data.ip) {
+                // Это Wi-Fi статус
                 dom.updateWifiStatus(data.mode, data.ip);
-                return;
-            }
-            
-            // ================================================================
-            // 2. ДАННЫЕ ТЕМПЕРАТУР
-            // ================================================================
-            if (data.temps) {
+            } else if (data.temps) {
                 processData(data);
-                return;
-            }
-            
-            // ================================================================
-            // 3. СТАТУС (сообщения от ESP)
-            // ================================================================
-            if (data.status) {
+            } else if (data.status) {
                 console.log('[WiFi]', data.status);
                 const connectBtn = dom.get('wifiConnectBtn');
                 const apBtn = dom.get('wifiAPBtn');
                 if (connectBtn) { connectBtn.textContent = 'Подключить'; connectBtn.disabled = false; }
                 if (apBtn) { apBtn.textContent = 'AP режим'; apBtn.disabled = false; }
-                return;
             }
-            
-            // ================================================================
-            // 4. ЗВУКОВЫЕ КОМАНДЫ (НОВОЕ)
-            // ================================================================
-            if (data.sound) {
-                console.log('[SOUND] Получена команда:', data.sound);
-                switch (data.sound) {
-                    case 'tormazi':
-                        soundManager.play(soundManager.tormazi);
-                        break;
-                    case 'zhdati':
-                        soundManager.play(soundManager.zhdati);
-                        break;
-                    case 'yellow_start':
-                        soundManager.startYellowCycle();
-                        break;
-                    case 'red_start':
-                        soundManager.startRedCycle();
-                        break;
-                    case 'stop_all':
-                        soundManager.stopAll();
-                        break;
-                    default:
-                        console.log('[SOUND] Неизвестная команда:', data.sound);
-                }
-                return;
-            }
-            
         } catch(e) {
             console.error('[WS] Ошибка парсинга:', e);
         }

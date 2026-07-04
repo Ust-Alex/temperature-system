@@ -2,17 +2,17 @@
  * ============================================================================
  * @file wifi_mqtt.cpp
  * @brief Веб-сервер + WebSocket + mDNS + ГИБРИДНЫЙ РЕЖИМ AP/STA
- * @version 5.1 (УВЕЛИЧЕНА МОЩНОСТЬ AP ДО 20 дБм)
+ * @version 5.2 (ОТПРАВКА ЗВУКОВЫХ КОМАНД НА ВЕБ-КЛИЕНТЫ)
  * 
  * ЛОГИКА РАБОТЫ:
  * 1. При загрузке ESP32 проверяет EEPROM: есть ли сохранённые SSID и пароль?
  * 2. Если есть — пытается подключиться к роутеру (режим STA) в течение 15 секунд.
  * 3. Если подключение успешно — работает в STA, точка доступа ВЫКЛЮЧЕНА.
- * 4. Если подключение не удалось (нет сети, неверный пароль) — через 15 секунд
- *    переключается в режим AP (точка доступа TermoESP32, IP 192.168.4.1).
+ * 4. Если подключение не удалось — через 15 секунд переключается в режим AP.
  * 5. Если настроек нет — сразу запускается режим AP.
- * 6. Переключение между режимами — через веб-интерфейс (форма настройки Wi-Fi).
- * 7. При переключении — перезагрузка ESP32.
+ * 6. Переключение между режимами — через веб-интерфейс.
+ * 
+ * НОВОЕ: Отправка звуковых команд (sound) всем клиентам через WebSocket
  * ============================================================================
  */
 
@@ -22,7 +22,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <ESPmDNS.h>
-#include <esp_wifi.h>   // ДЛЯ УПРАВЛЕНИЯ МОЩНОСТЬЮ
+#include <esp_wifi.h>
 
 #include "wifi_mqtt.h"
 #include "globals.h"
@@ -30,18 +30,19 @@
 #include "mode2_timer.h"
 #include "mode2_logic.h"
 #include "eeprom_settings.h"
+#include "mp3_player.h"
 
 // ============================================================================
 // КОНСТАНТЫ
 // ============================================================================
 #define AP_SSID "TermoESP32"
 #define AP_PASSWORD ""  // Пустой пароль — открытая сеть
-#define AP_CHANNEL 6    // Фиксированный канал для стабильности
+#define AP_CHANNEL 6    // Фиксированный канал
 #define AP_IP 192, 168, 4, 1
 #define AP_GATEWAY 192, 168, 4, 1
 #define AP_SUBNET 255, 255, 255, 0
-#define STA_TIMEOUT 15000  // 15 секунд на подключение к роутеру
-#define AP_TX_POWER 80     // 80 = 20 дБм (максимальная мощность)
+#define STA_TIMEOUT 15000
+#define AP_TX_POWER 80     // 80 = 20 дБм
 
 // ============================================================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -49,14 +50,13 @@
 WebSocketsServer webSocket = WebSocketsServer(WEBSOCKET_PORT);
 AsyncWebServer server(80);
 bool wifiClientConnected = false;
-bool wifiModeAP = true;  // true = AP, false = STA
+bool wifiModeAP = true;
 
-// Внешние переменные
 extern uint32_t timeStartMs;
 extern bool timeIsCounting;
 
 // ============================================================================
-// ФОРМИРОВАНИЕ JSON С ДАННЫМИ ТЕМПЕРАТУР (6 ДАТЧИКОВ)
+// ФОРМИРОВАНИЕ JSON С ДАННЫМИ ТЕМПЕРАТУР
 // ============================================================================
 static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
   float temps[6];
@@ -109,6 +109,18 @@ void sendTemperaturesToClients() {
   char jsonBuffer[160];
   buildTemperaturesJSON(jsonBuffer, sizeof(jsonBuffer));
   broadcastJSON(jsonBuffer);
+}
+
+// ============================================================================
+// ОТПРАВКА ЗВУКОВЫХ КОМАНД (НОВОЕ)
+// ============================================================================
+void sendSoundCommand(const char* soundType) {
+  if (!wifiClientConnected) return;
+  
+  char soundMsg[64];
+  snprintf(soundMsg, sizeof(soundMsg), "{\"sound\":\"%s\"}", soundType);
+  webSocket.broadcastTXT(soundMsg);
+  Serial.printf("[WiFi] Отправлен звук: %s\n", soundType);
 }
 
 // ============================================================================
@@ -165,7 +177,7 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length)
 }
 
 // ============================================================================
-// ЗАПУСК РЕЖИМА AP (С УВЕЛИЧЕННОЙ МОЩНОСТЬЮ)
+// ЗАПУСК РЕЖИМА AP
 // ============================================================================
 void startAP() {
   Serial.println("[WiFi] Запуск режима AP...");
@@ -178,14 +190,28 @@ void startAP() {
   WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL);
   WiFi.setSleep(false);
 
-  // Небольшая задержка и установка максимальной мощности
   delay(200);
-  esp_wifi_set_max_tx_power(AP_TX_POWER);  // 80 = 20 дБм
+  esp_wifi_set_max_tx_power(AP_TX_POWER);
   
   wifiModeAP = true;
-  Serial.printf("[WiFi] AP запущена. SSID: %s, IP: 192.168.4.1, канал: %d, мощность: 20 дБм\n", 
-                AP_SSID, AP_CHANNEL);
+  
+  // ============================================================
+  // ПОЛУЧЕНИЕ РЕАЛЬНОЙ МОЩНОСТИ ПЕРЕДАТЧИКА
+  // ============================================================
+  int8_t realPower = 0;
+  bool powerReadSuccess = (esp_wifi_get_max_tx_power(&realPower) == ESP_OK);
+  
+  if (powerReadSuccess) {
+    Serial.printf("[WiFi] AP запущена. SSID: %s, IP: 192.168.4.1, канал: %d, мощность: %d дБм\n", 
+                  AP_SSID, AP_CHANNEL, realPower / 4);
+  } else {
+    Serial.printf("[WiFi] AP запущена. SSID: %s, IP: 192.168.4.1, канал: %d, мощность: ОШИБКА ЧТЕНИЯ\n", 
+                  AP_SSID, AP_CHANNEL);
+  }
 }
+
+
+
 
 // ============================================================================
 // ПОДКЛЮЧЕНИЕ К РОУТЕРУ (РЕЖИМ STA)
@@ -202,6 +228,11 @@ bool connectSTA() {
     return false;
   }
   
+  // ============================================================
+  // УСТАНОВКА МАКСИМАЛЬНОЙ МОЩНОСТИ ПЕРЕДАТЧИКА
+  // ============================================================
+  esp_wifi_set_max_tx_power(AP_TX_POWER);  // 80 = 20 дБм
+  
   WiFi.begin(ssid.c_str(), pass.c_str());
   
   uint32_t startTime = millis();
@@ -213,13 +244,35 @@ bool connectSTA() {
   
   if (WiFi.status() == WL_CONNECTED) {
     wifiModeAP = false;
-    Serial.printf("[WiFi] Подключено к роутеру. IP: %s\n", WiFi.localIP().toString());
+    
+    // ============================================================
+    // ПОЛУЧЕНИЕ РЕАЛЬНОЙ МОЩНОСТИ ПОСЛЕ ПОДКЛЮЧЕНИЯ
+    // ============================================================
+    int8_t realPower = 0;
+    bool powerReadSuccess = (esp_wifi_get_max_tx_power(&realPower) == ESP_OK);
+    
+    if (powerReadSuccess) {
+      Serial.printf("[WiFi] Подключено к роутеру. SSID: %s, IP: %s, мощность: %d дБм\n", 
+                    ssid.c_str(), WiFi.localIP().toString().c_str(), realPower / 4);
+    } else {
+      Serial.printf("[WiFi] Подключено к роутеру. SSID: %s, IP: %s, мощность: ОШИБКА\n", 
+                    ssid.c_str(), WiFi.localIP().toString().c_str());
+    }
+    
     return true;
   } else {
     Serial.println("[WiFi] Не удалось подключиться к роутеру.");
     return false;
   }
 }
+
+
+
+
+
+
+
+
 
 // ============================================================================
 // ИНИЦИАЛИЗАЦИЯ ВЕБ-СЕРВЕРА
@@ -252,12 +305,10 @@ void initWebSocket() {
 void taskWiFi(void* pvParameters) {
   Serial.println("[WiFi] Задача запущена (гибридный режим AP/STA)");
 
-  // ========================================================================
-  // 1. ПРОВЕРКА НАСТРОЕК И ПОДКЛЮЧЕНИЕ К РОУТЕРУ (ЕСЛИ ЕСТЬ)
-  // ========================================================================
   if (settings_has_wifi()) {
     bool connected = connectSTA();
     if (connected) {
+      Serial.printf("[WiFi] IP адрес: %s\n", WiFi.localIP().toString().c_str());
       if (MDNS.begin("esp32ust")) {
         Serial.println("[mDNS] ✅ Запущен. Имя: http://esp32ust.local");
         MDNS.addService("http", "tcp", 80);
@@ -273,15 +324,9 @@ void taskWiFi(void* pvParameters) {
     startAP();
   }
 
-  // ========================================================================
-  // 2. ЗАПУСК ВЕБ-СЕРВЕРА И WEBSOCKET
-  // ========================================================================
   initWebServer();
   initWebSocket();
 
-  // ========================================================================
-  // 3. ОСНОВНОЙ ЦИКЛ
-  // ========================================================================
   TickType_t lastWake = xTaskGetTickCount();
   uint32_t lastSend = 0;
 
