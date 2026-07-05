@@ -6,7 +6,7 @@
     <title>Термометр</title>
     
     <!-- Chart.js -->
-    <script src="chart.umd.min.js"></script>
+    <script src="chart.umd.min_V4_4_4.js"></script>
     <!-- Hammer.js для распознавания жестов -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
     <!-- Плагин зума для Chart.js -->
@@ -26,7 +26,7 @@
     <div class="window window-left" id="windowLeft">
         <div class="left-panel">
             <!-- ================================================================
-                 6 КАРТОЧЕК ТЕМПЕРАТУР (НОВЫЙ ПОРЯДОК)
+                 6 КАРТОЧЕК ТЕМПЕРАТУР
                  ================================================================ -->
             <div class="temp-card" id="card0" style="color: #FF00FF;">--.--</div>   <!-- 0: ВЫХОД -->
             <div class="temp-card" id="card1" style="color: #FFA500;">--.--</div>   <!-- 1: СТЕНКА 100см -->
@@ -43,22 +43,24 @@
             <button class="scale-btn active" id="btn1m" data-range="1м">1м</button>
             
             <!-- ================================================================
-                 ФОРМА НАСТРОЙКИ WI-FI
+                 ПАНЕЛЬ WI-FI (только IP, TX, RSSI)
                  ================================================================ -->
             <div class="panel-wifi" id="panelWifi">
-                <div class="wifi-status" id="wifiStatus">
-                    <span id="wifiModeLabel">Режим: </span>
-                    <span id="wifiModeValue">--</span>
-                </div>
                 <div class="wifi-ip" id="wifiIP">
                     <span>IP: </span>
                     <span id="wifiIPValue">--</span>
                 </div>
-                <div class="wifi-form">
-                    <input type="text" id="wifiSSID" placeholder="SSID" maxlength="32">
-                    <input type="password" id="wifiPassword" placeholder="Пароль" maxlength="64">
-                    <button class="wifi-btn" id="wifiConnectBtn">Подключить</button>
-                    <button class="wifi-btn wifi-btn-ap" id="wifiAPBtn">AP режим</button>
+                <div class="wifi-signal" id="wifiSignal">
+                    <div class="wifi-signal-row">
+                        <span>TX: </span>
+                        <span id="wifiTxValue">--</span>
+                        <span> dBm</span>
+                    </div>
+                    <div class="wifi-signal-row">
+                        <span>RSSI: </span>
+                        <span id="wifiRssiValue">--</span>
+                        <span> dBm</span>
+                    </div>
                 </div>
             </div>
             
@@ -95,6 +97,16 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Подключение модулей JS (порядок важен!) -->
+    <script src="js/config.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/dom.js"></script>
+    <script src="js/sound.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/controls.js"></script>
+    <script src="js/wifi.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>

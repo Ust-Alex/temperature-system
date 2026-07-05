@@ -1,370 +1,434 @@
+/* ============================================================================
+   style.css - Стили для веб-интерфейса термометра
+   Версия 6.2 (исправленная панель Wi-Fi)
+   ============================================================================ */
+
+/* Обнуляем отступы и устанавливаем box-sizing для всех элементов */
 * {
-    box-sizing: border-box;
-    user-select: none;
-    margin: 0;
-    padding: 0;
+    margin: 0;                /* Убираем внешние отступы */
+    padding: 0;               /* Убираем внутренние отступы */
+    box-sizing: border-box;   /* padding и border входят в размер элемента */
 }
 
+/* Основные стили для body */
 body {
-    font-family: 'Arial', sans-serif;
-    background: #1a1a1a;
-    color: #fff;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    position: relative;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;  /* Шрифт */
+    background: #1a1a2e;                     /* Тёмно-синий фон */
+    color: #e0e0e0;                          /* Светло-серый текст */
+    height: 100vh;                           /* Высота = 100% окна браузера */
+    overflow: hidden;                        /* Убираем скролл */
+    display: grid;                           /* Используем CSS Grid для раскладки */
+    grid-template-rows: 40px 1fr 30px;       /* Три строки: 40px, остальное, 30px */
+    grid-template-columns: 110px 1fr;        /* Две колонки: 110px (левая), остальное */
+    grid-template-areas:
+        "header header"                      /* Верхняя строка: заголовок на всю ширину */
+        "left graph"                         /* Средняя строка: левая панель и график */
+        "debug debug";                       /* Нижняя строка: отладка на всю ширину */
+    gap: 4px;                                /* Отступы между блоками */
+    padding: 4px;                            /* Внешние отступы страницы */
 }
 
-/* ============================================ */
-/* БАЗОВЫЕ ОКНА */
-/* ============================================ */
+/* Стили для всех окон */
 .window {
-    position: absolute;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    overflow: hidden;
+    background: #16213e;                     /* Тёмно-синий фон окон */
+    border-radius: 6px;                      /* Закругление углов */
+    border: 1px solid #2a3a5e;              /* Тонкая рамка */
+    overflow: hidden;                        /* Скрываем содержимое, выходящее за границы */
 }
 
-/* ============================================ */
-/* ВЕРХНЕЕ ОКНО */
-/* ============================================ */
+/* ============================================================================
+   Верхнее окно (режим)
+   ============================================================================ */
 .window-header {
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 20px;
-    border-bottom: 1px solid #333;
+    grid-area: header;                       /* Расположение в сетке: header */
+    display: flex;                           /* Используем flexbox */
+    align-items: center;                     /* Центрируем по вертикали */
+    padding: 0 16px;                         /* Отступы слева и справа */
+    background: #0f3460;                     /* Тёмно-синий фон */
 }
 
+/* Строка режима */
 .mode-bar {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 14px;
-    transition: background-color 0.3s;
+    font-size: 14px;                         /* Размер шрифта */
+    font-weight: bold;                       /* Жирный шрифт */
+    letter-spacing: 1px;                     /* Межбуквенный интервал */
+    padding: 4px 12px;                       /* Внутренние отступы */
+    border-radius: 4px;                      /* Закругление углов */
+    width: 100%;                             /* Растягиваем на всю ширину */
+    text-align: center;                      /* Текст по центру */
 }
 
-.mode0 { background: #0066cc; }
-.mode1-green { background: #00aa00; }
-.mode1-yellow { background: #cccc00; color: #000; }
-.mode1-red { background: #cc0000; }
+/* Режим 1 (стабилизация) */
+.mode0 { 
+    background: #16213e;                     /* Фон */
+    color: #4fc3f7;                          /* Голубой текст */
+}
 
-/* ============================================ */
-/* ЛЕВОЕ ОКНО */
-/* ============================================ */
+/* Режим 2 (зелёный) */
+.mode1-green { 
+    background: #1b3a1b;                     /* Тёмно-зелёный фон */
+    color: #66bb6a;                          /* Светло-зелёный текст */
+}
+
+/* Режим 2 (жёлтый) */
+.mode1-yellow { 
+    background: #3a3a1b;                     /* Тёмно-жёлтый фон */
+    color: #ffd54f;                          /* Жёлтый текст */
+    animation: pulse-yellow 1s infinite;     /* Анимация пульсации infinite-бесконечный*/
+}
+
+/* Режим 2 (красный) */
+.mode1-red { 
+    background: #3a1b1b;                     /* Тёмно-красный фон */
+    color: #ef5350;                          /* Красный текст */
+    animation: pulse-red 1s infinite;        /* Анимация пульсации */
+}
+
+/* Анимация пульсации для жёлтого */
+@keyframes pulse-yellow {
+    0%, 100% { opacity: 1; }                 /* Начало и конец: полностью видимый */
+    50% { opacity: 0.6; }                    /* Середина: полупрозрачный */
+}
+
+/* Анимация пульсации для красного */
+@keyframes pulse-red {
+    0%, 100% { opacity: 1; }                 /* Начало и конец: полностью видимый */
+    50% { opacity: 0.5; }                    /* Середина: полупрозрачный */
+}
+
+/* ============================================================================
+   Левое окно (панель)
+   ============================================================================ */
 .window-left {
-    top: 20px;
-    left: 0;
-    bottom: 30px;
-    width: 90px;
-    border-right: 1px solid #333;
-    overflow-y: auto;
+    grid-area: left;                         /* Расположение в сетке: left */
+    padding: 6px;                            /* Внутренние отступы */
+    display: flex;                           /* Используем flexbox */
+    flex-direction: column;                  /* Вертикальное расположение */
 }
 
+/* Контейнер левой панели */
 .left-panel {
-    width: 100%;
-    padding: 8px 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+    display: flex;                           /* Используем flexbox */
+    flex-direction: column;                  /* Вертикальное расположение */
+    height: 100%;                            /* Растягиваем на всю высоту */
+    gap: 3px;                                /* Расстояние между элементами */
 }
 
-/* ============================================ */
-/* КАРТОЧКИ (6 ШТУК) */
-/* ============================================ */
+/* Карточки температур */
 .temp-card {
-    width: 80px;
-    height: 35px;
-    background: #2a2a2a;
-    border-radius: 4px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 22px;
-    font-weight: bold;
-    margin-bottom: 2px;
+    font-size: 26px;                         /* Размер шрифта */
+    font-weight: bold;                       /* Жирный шрифт */
+    background: #1a2a4a;                     /* Тёмно-синий фон */
+    border-radius: 4px;                      /* Закругление углов */
+    padding: 3px 8px;                        /* Внутренние отступы */
+    text-align: right;                       /* Текст по правому краю */
+    letter-spacing: 1px;                     /* Межбуквенный интервал */
+    border-left: 3px solid transparent;      /* Левая рамка (невидимая) */
+    transition: all 0.1s;                    /* Плавный переход при наведении */
+    min-height: 30px;                        /* Минимальная высота */
+    line-height: 30px;                       /* Высота строки = высоте блока */
 }
 
-/* ============================================ */
-/* КНОПКИ МАСШТАБА И ВРЕМЕНИ */
-/* ============================================ */
+/* Эффект при наведении на карточку */
+.temp-card:hover { 
+    background: #1e3a5e;                     /* Светлее фон при наведении */
+}
+
+/* Кнопки масштаба графика */
 .scale-btn {
-    width: 80px;
-    height: 20px;
-    background: #333;
-    border: none;
-    color: white;
-    font-size: 12px;
-    border-radius: 2px;
-    cursor: pointer;
-    margin: 1px 0;
-    transition: background-color 0.2s;
-    outline: none;
+    background: #1a2a4a;                     /* Тёмно-синий фон */
+    color: #a0b0c0;                          /* Светло-серый текст */
+    border: 1px solid #2a3a5e;              /* Рамка */
+    border-radius: 4px;                      /* Закругление углов */
+    padding: 2px 0;                          /* Внутренние отступы */
+    font-size: 18px;                         /* Размер шрифта */
+    cursor: pointer;                         /* Курсор-рука */
+    transition: all 0.2s;                    /* Плавный переход */
+    flex: 1;                                 /* Растягиваем равномерно */
+    text-align: center;                      /* Текст по центру */
+    margin: 1px 0;                           /* Отступы сверху и снизу */
 }
 
-.scale-btn:hover { background: #3a3a3a; }
-.scale-btn:active { background: #4a4a4a; }
-.scale-btn.active { background: #0066cc !important; }
+/* Эффект при наведении на кнопку масштаба */
+.scale-btn:hover { 
+    background: #2a3a5e;                     /* Светлее фон */
+}
 
-/* ============================================ */
-/* WI-FI ПАНЕЛЬ (НОВАЯ) */
-/* ============================================ */
+/* Активная кнопка масштаба */
+.scale-btn.active {
+    background: #4fc3f7;                     /* Голубой фон */
+    color: #0a1a2a;                          /* Тёмный текст */
+    border-color: #4fc3f7;                   /* Рамка */
+    font-weight: bold;                       /* Жирный шрифт */
+}
+
+/* ============================================================================
+   Панель Wi-Fi (обновлённая)
+   ============================================================================ */
 .panel-wifi {
-    width: 80px;
-    background: #2a2a2a;
-    border-radius: 4px;
-    padding: 4px 0;
-    margin-top: 4px;
-    border-top: 1px solid #444;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
+    background: #0f1f3a;                     /* Тёмно-синий фон */
+    border-radius: 4px;                      /* Закругление углов */
+    padding: 4px 8px;                        /* Внутренние отступы */
+    margin-top: 2px;                         /* Отступ сверху */
+    display: flex;                           /* Используем flexbox */
+    flex-direction: column;                  /* Вертикальное расположение */
+    gap: 2px;                                /* Расстояние между элементами */
+    border: 1px solid #1a2a5a;              /* Тонкая рамка */
 }
 
-.wifi-status, .wifi-ip {
-    width: 100%;
-    text-align: center;
-    font-size: 8px;
-    color: #aaa;
+/* Строка с IP-адресом */
+.wifi-ip {
+    font-size: 10px;                         /* Размер шрифта */
+    color: #a0b0c0;                          /* Светло-серый текст */
+    display: flex;                           /* Используем flexbox */
+    align-items: center;                     /* Центрируем по вертикали */
+    gap: 4px;                                /* Расстояние между элементами */
 }
 
-.wifi-status span, .wifi-ip span {
-    display: inline;
-}
-
-#wifiModeValue {
-    font-weight: bold;
-}
-
+/* Значение IP-адреса */
 #wifiIPValue {
-    color: #00FF00;
+    font-weight: bold;                       /* Жирный шрифт */
+    color: #e0e0e0;                          /* Светлый текст */
 }
 
-.wifi-form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    padding: 2px 0;
+/* Блок с сигналом (TX и RSSI) */
+.wifi-signal {
+    display: flex;                           /* Используем flexbox */
+    flex-direction: column;                  /* Вертикальное расположение (две строки) */
+    gap: 0px;                                /* Без отступа между строками */
+    border-top: 1px solid #1a2a4a;          /* Разделительная линия сверху */
+    padding-top: 3px;                        /* Отступ сверху */
+    margin-top: 2px;                         /* Отступ сверху */
 }
 
-.wifi-form input {
-    width: 70px;
-    background: #333;
-    border: 1px solid #555;
-    color: white;
-    padding: 2px;
-    border-radius: 3px;
-    font-size: 9px;
-    text-align: center;
+/* Каждая строка сигнала (TX или RSSI) */
+.wifi-signal-row {
+    display: flex;                           /* Используем flexbox */
+    align-items: center;                     /* Центрируем по вертикали */
+    gap: 4px;                                /* Расстояние между элементами */
+    font-size: 16px;                         /* Размер шрифта */
+    color: #a0b0c0;                          /* Светло-серый текст */
 }
 
-.wifi-form input::placeholder {
-    color: #666;
-    font-size: 8px;
+/* Значения TX и RSSI */
+#wifiTxValue, #wifiRssiValue {
+    font-weight: bold;                       /* Жирный шрифт */
+    color: #e0e0e0;                          /* Светлый текст */
+    min-width: 20px;                         /* Минимальная ширина */
 }
 
-.wifi-btn {
-    width: 70px;
-    height: 18px;
-    background: #0066cc;
-    border: none;
-    color: white;
-    font-size: 9px;
-    border-radius: 3px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    outline: none;
-}
-
-.wifi-btn:hover {
-    background: #0077ee;
-}
-
-.wifi-btn:active {
-    background: #0055aa;
-}
-
-.wifi-btn-ap {
-    background: #cc6600;
-}
-
-.wifi-btn-ap:hover {
-    background: #ee7700;
-}
-
-.wifi-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* ============================================ */
-/* НИЖНИЙ БЛОК (ПОЛЯ ВВОДА) */
-/* ============================================ */
+/* ============================================================================
+   Нижний блок (диапазон температур + индикатор статуса)
+   ============================================================================ */
 .panel-bottom {
-    margin-top: 4px;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    border-top: 1px solid #444;
-    padding-top: 4px;
+    display: flex;                           /* Используем flexbox */
+    flex-direction: column;                  /* Вертикальное расположение (две строки) */
+    gap: 3px;                                /* Расстояние между строками */
+    margin-top: auto;                        /* Прижимаем к низу */
+    padding-top: 4px;                        /* Отступ сверху */
+    border-top: 1px solid #1a2a4a;          /* Разделительная линия сверху */
 }
 
+/* Поле ввода диапазона (от/до) */
 .panel-range-item {
-    width: 80px;
-    background: #2a2a2a;
-    border-radius: 4px;
-    padding: 2px 0;
-    text-align: center;
+    display: flex;                           /* Используем flexbox */
+    align-items: center;                     /* Центрируем по вертикали */
+    gap: 4px;                                /* Расстояние между элементами */
+    font-size: 12px;                         /* Размер шрифта */
+    color: #a0b0c0;                          /* Светло-серый текст */
+    justify-content: flex-end;               /* Прижимаем к правому краю */
 }
 
-.panel-range-item label {
-    color: #aaa;
-    font-size: 9px;
-    display: block;
-}
-
+/* Поле ввода для чисел */
 .panel-range-item input {
-    width: 70px;
-    background: #333;
-    border: 1px solid #555;
-    color: white;
-    padding: 2px;
-    border-radius: 3px;
-    font-size: 11px;
-    text-align: center;
+    width: 60px;                             /* Ширина поля */
+    background: #0a1a2a;                     /* Тёмный фон */
+    border: 1px solid #1a2a4a;              /* Рамка */
+    color: #e0e0e0;                          /* Светлый текст */
+    border-radius: 3px;                      /* Закругление углов */
+    padding: 2px 4px;                        /* Внутренние отступы */
+    font-size: 16px;                         /* Размер шрифта */
+    text-align: center;                      /* Текст по центру */
 }
 
-/* ============================================ */
-/* УБИРАЕМ СТРЕЛОЧКИ (СПИННЕРЫ) У ВСЕХ ЧИСЛОВЫХ ПОЛЕЙ */
-/* ============================================ */
-input[type=number]::-webkit-outer-spin-button,
-input[type=number]::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
-input[type=number] {
-    -moz-appearance: textfield;
-    appearance: textfield;
-}
-
-/* ============================================ */
-/* СТАТУС ПОДКЛЮЧЕНИЯ */
-/* ============================================ */
+/* Индикатор статуса (точка + текст) */
 .panel-status {
-    width: 80px;
-    background: #2a2a2a;
-    border-radius: 4px;
-    padding: 4px 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
+    display: flex;                           /* Используем flexbox */
+    align-items: center;                     /* Центрируем по вертикали */
+    gap: 8px;                                /* Расстояние между элементами */
+    justify-content: flex-end;               /* Прижимаем к правому краю */
+    margin-top: 2px;                         /* Отступ сверху */
 }
 
+/* Точка-индикатор статуса */
 .panel-status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    transition: all 0.3s;
+    width: 14px;                             /* Ширина */
+    height: 18px;                            /* Высота */
+    border-radius: 50%;                      /* Круглая форма */
+    display: inline-block;                   /* Строчно-блочный элемент */
 }
 
-@keyframes pulse {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.1); }
-    100% { opacity: 1; transform: scale(1); }
+/* Точка: ONLINE */
+.panel-status-dot.online { 
+    background: #4caf50;                     /* Зелёный цвет */
+    box-shadow: 0 0 10px #4caf50;            /* Свечение */
 }
 
-.panel-status-dot.online {
-    background: #4CAF50;
-    box-shadow: 0 0 4px #4CAF50;
-    animation: none;
+/* Точка: OFFLINE (красный) */
+.panel-status-dot.offline { 
+    background: #f44336;                     /* Красный цвет */
 }
 
-.panel-status-text.online { color: #4CAF50; animation: none; }
-
-.panel-status-dot.offline-yellow {
-    background: #ffaa00;
-    box-shadow: 0 0 4px #ffaa00;
-    animation: pulse 1.5s infinite;
+/* Точка: OFFLINE (жёлтый) */
+.panel-status-dot.offline-yellow { 
+    background: #ffc107;                     /* Жёлтый цвет */
+    animation: pulse-yellow 0.8s infinite;   /* Анимация пульсации */
 }
 
-.panel-status-text.offline-yellow {
-    color: #ffaa00;
-    animation: pulse 1.5s infinite;
-}
-
-.panel-status-dot.offline {
-    background: #f44336;
-    box-shadow: 0 0 4px #f44336;
-    animation: pulse 1.5s infinite;
-}
-
-.panel-status-text.offline {
-    color: #f44336;
-    animation: pulse 1.5s infinite;
-}
-
+/* Текст статуса */
 .panel-status-text {
-    font-size: 10px;
-    font-weight: bold;
+    font-size: 16px;                         /* Размер шрифта */
+    font-weight: bold;                       /* Жирный шрифт */
 }
 
-/* ============================================ */
-/* ОКНО ГРАФИКА */
-/* ============================================ */
+/* Текст: ONLINE */
+.panel-status-text.online { 
+    color: #4caf50;                          /* Зелёный цвет */
+}
+
+/* Текст: OFFLINE (красный) */
+.panel-status-text.offline { 
+    color: #f44336;                          /* Красный цвет */
+}
+
+/* Текст: OFFLINE (жёлтый) */
+.panel-status-text.offline-yellow { 
+    color: #ffc107;                          /* Жёлтый цвет */
+    animation: pulse-yellow 0.8s infinite;   /* Анимация пульсации */
+}
+
+/* ============================================================================
+   Окно графика
+   ============================================================================ */
 .window-graph {
-    top: 20px;
-    left: 90px;
-    right: 0;
-    bottom: 30px;
-    background: #1a1a1a;
+    grid-area: graph;                        /* Расположение в сетке: graph */
+    padding: 4px;                            /* Внутренние отступы */
+    background: #0f1a2e;                     /* Тёмный фон */
+    position: relative;                      /* Для позиционирования дочерних элементов */
 }
 
+/* Канва для графика */
 #tempChart {
-    width: 100%;
-    height: 100%;
+    width: 100% !important;                  /* Ширина 100% (приоритет) */
+    height: 100% !important;                 /* Высота 100% (приоритет) */
 }
 
-/* ============================================ */
-/* НИЖНЕЕ ОКНО (ОТЛАДКА) */
-/* ============================================ */
+/* ============================================================================
+   Нижнее окно (отладка)
+   ============================================================================ */
 .window-debug {
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 30px;
-    border-top: 1px solid #333;
+    grid-area: debug;                        /* Расположение в сетке: debug */
+    padding: 2px 12px;                       /* Внутренние отступы */
+    background: #0a1a2a;                     /* Тёмный фон */
+    display: flex;                           /* Используем flexbox */
+    align-items: center;                     /* Центрируем по вертикали */
 }
 
+/* Панель отладки */
 .debug-bar {
-    width: 100%;
-    height: 100%;
-    background: transparent;
-    padding: 0 8px;
-    font-family: monospace;
-    font-size: 10px;
-    color: #aaa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    font-size: 11px;                         /* Размер шрифта */
+    color: #5a7a9a;                          /* Серый текст */
+    display: flex;                           /* Используем flexbox */
+    gap: 20px;                               /* Расстояние между элементами */
+    flex-wrap: wrap;                         /* Перенос на новую строку при необходимости */
+    width: 100%;                             /* Растягиваем на всю ширину */
 }
 
-.debug-bar span {
-    white-space: nowrap;
-}
-
+/* Значения отладки */
 .debug-value {
-    color: #ffaa00;
-    font-weight: bold;
+    color: #8aabca;                          /* Светло-голубой текст */
+    font-weight: bold;                       /* Жирный шрифт */
+}
+
+/* ============================================================================
+   АДАПТАЦИЯ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ
+   ============================================================================ */
+
+/* Для планшетов и небольших экранов (ширина до 700px) */
+@media (max-width: 700px) {
+    body {
+        grid-template-rows: 36px 1fr 26px;   /* Уменьшенная высота строк */
+        grid-template-columns: 160px 1fr;    /* Уменьшенная левая колонка */
+        gap: 3px;                            /* Меньше отступы */
+        padding: 3px;                        /* Меньше отступы страницы */
+    }
+
+    .mode-bar { font-size: 11px; }           /* Уменьшаем шрифт режима */
+    .temp-card { 
+        font-size: 12px;                     /* Уменьшаем шрифт температур */
+        min-height: 22px;                    /* Уменьшаем высоту */
+        line-height: 22px;                   /* Уменьшаем высоту строки */
+    }
+    .scale-btn { font-size: 9px; }           /* Уменьшаем шрифт кнопок масштаба */
+
+    .panel-wifi {
+        padding: 3px 6px;                    /* Меньше отступы в панели Wi-Fi */
+    }
+    .wifi-ip, .wifi-signal-row { 
+        font-size: 10px;                     /* Уменьшаем шрифт в Wi-Fi панели */
+    }
+
+    .panel-range-item input { 
+        width: 40px;                         /* Уменьшаем поля ввода */
+        font-size: 10px;                     /* Уменьшаем шрифт */
+    }
+    .panel-status-text { 
+        font-size: 11px;                     /* Уменьшаем шрифт статуса */
+    }
+    .panel-status-dot { 
+        width: 12px;                         /* Уменьшаем точку */
+        height: 12px;
+    }
+    .debug-bar { 
+        font-size: 9px;                      /* Уменьшаем шрифт отладки */
+        gap: 8px;                            /* Меньше отступы */
+    }
+}
+
+/* Для телефонов (ширина до 500px) */
+@media (max-width: 500px) {
+    body {
+        grid-template-rows: 32px 1fr 24px;   /* Ещё меньше строки */
+        grid-template-columns: 100px 1fr;    /* Ещё меньше левая колонка */
+        gap: 2px;                            /* Минимальные отступы */
+        padding: 2px;                        /* Минимальные отступы страницы */
+    }
+    .mode-bar { font-size: 9px; }            /* Ещё меньше шрифт режима */
+    .temp-card { 
+        font-size: 10px;                     /* Ещё меньше шрифт температур */
+        min-height: 18px;                    /* Ещё меньше высота */
+        line-height: 18px;                   /* Ещё меньше высота строки */
+    }
+    .scale-btn { 
+        font-size: 8px;                      /* Ещё меньше шрифт кнопок масштаба */
+        padding: 1px 0;                      /* Меньше отступы */
+    }
+    .panel-wifi { 
+        padding: 2px 4px;                    /* Минимальные отступы */
+    }
+    .wifi-ip, .wifi-signal-row { 
+        font-size: 8px;                      /* Минимальный шрифт */
+    }
+    .panel-range-item input { 
+        width: 30px;                         /* Минимальная ширина поля */
+        font-size: 8px;                      /* Минимальный шрифт */
+    }
+    .debug-bar { 
+        font-size: 8px;                      /* Минимальный шрифт */
+        gap: 4px;                            /* Минимальные отступы */
+    }
+    .panel-status-dot { 
+        width: 10px;                         /* Минимальная точка */
+        height: 10px;
+    }
 }
