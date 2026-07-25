@@ -1,8 +1,8 @@
 /**
  * ============================================================================
  * @file websocket.js
- * @brief WEBSOCKET И WATCHDOG
- * @version 6.2
+ * @brief WEBSOCKET И WATCHDOG (С ПРИЁМОМ TX И RSSI)
+ * @version 6.3
  * 
  * Содержит подключение, переподключение, watchdog и обработку сообщений
  * ============================================================================
@@ -112,10 +112,21 @@ function connectWebSocket() {
             }
             
             // ================================================================
-            // 2. ДАННЫЕ ТЕМПЕРАТУР
+            // 2. ДАННЫЕ ТЕМПЕРАТУР (С TX И RSSI)
             // ================================================================
             if (data.temps) {
                 processData(data);
+                
+                // ---- ОБНОВЛЯЕМ TX И RSSI ----
+                if (data.tx !== undefined && data.tx >= 0) {
+                    document.getElementById('wifiTxValue').textContent = data.tx;
+                } else {
+                    document.getElementById('wifiTxValue').textContent = '--';
+                }
+                if (data.rssi !== undefined) {
+                    document.getElementById('wifiRssiValue').textContent = data.rssi;
+                }
+                
                 return;
             }
             

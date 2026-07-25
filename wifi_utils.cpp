@@ -1,8 +1,8 @@
 /**
  * ============================================================================
  * @file wifi_utils.cpp
- * @brief РЕАЛИЗАЦИЯ ВСПОМОГАТЕЛЬНЫХ ФУНКЦИЙ
- * @version 6.2
+ * @brief РЕАЛИЗАЦИЯ ВСПОМОГАТЕЛЬНЫХ ФУНКЦИЙ (С TX И RSSI)
+ * @version 6.3
  * ============================================================================
  */
 
@@ -14,6 +14,7 @@
 #include "mode2_logic.h"
 #include <esp_wifi.h>
 #include <WebSocketsServer.h>
+#include <WiFi.h>  // 👈 ДОБАВЛЕНО для WiFi.RSSI()
 
 // ============================================================================
 // ВНЕШНИЕ ПЕРЕМЕННЫЕ
@@ -35,10 +36,10 @@ int8_t getRealTxPower() {
 }
 
 // ============================================================================
-// ФОРМИРОВАНИЕ JSON С ТЕМПЕРАТУРАМИ
+// ФОРМИРОВАНИЕ JSON С ТЕМПЕРАТУРАМИ, TX И RSSI
 // ============================================================================
 static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
-    // Сбор температур с 6 датчиков
+    // ---- Сбор температур с 6 датчиков ----
     float temps[6];
     for (int i = 0; i < 6; i++) {
         temps[i] = sensors[i].found ? sensors[i].temp : 0.0f;
@@ -47,7 +48,7 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
     int mode = sysData.mode;
     int color = guildColorState;
     
-    // Формирование строки времени
+    // ---- Формирование строки времени ----
     char timeStr[6] = "00:00";
     if (mode == 0) {
         if (timeIsCounting) {
@@ -65,17 +66,26 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
     
     float baseTemp = guildBaseTemp;
     
-    // Сборка JSON
+    // ---- Получение TX и RSSI ----
+    int8_t txPower = getRealTxPower();
+    int rssi = WiFi.RSSI();
+    
+    // ---- Сборка JSON с добавленными полями ----
     snprintf(buffer, bufferSize,
              "{"
              "\"temps\":[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f],"
              "\"mode\":%d,"
              "\"color\":%d,"
              "\"time\":\"%s\","
-             "\"baseTemp\":%.2f"
+             "\"baseTemp\":%.2f,"
+             "\"tx\":%d,"
+             "\"rssi\":%d"
              "}",
              temps[0], temps[1], temps[2], temps[3], temps[4], temps[5],
-             mode, color, timeStr, baseTemp);
+             mode, color, timeStr, baseTemp,
+             txPower,
+             rssi
+    );
 }
 
 // ============================================================================
@@ -88,7 +98,7 @@ void broadcastJSON(const char* json) {
 }
 
 void sendTemperaturesToClients() {
-    char jsonBuffer[160];
+    char jsonBuffer[200];  // Увеличил размер буфера для новых полей
     buildTemperaturesJSON(jsonBuffer, sizeof(jsonBuffer));
     broadcastJSON(jsonBuffer);
 }
