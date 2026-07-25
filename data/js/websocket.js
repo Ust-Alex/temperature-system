@@ -1,16 +1,11 @@
 /**
  * ============================================================================
  * @file websocket.js
- * @brief WEBSOCKET И WATCHDOG (С ПРИЁМОМ TX И RSSI)
+ * @brief WEBSOCKET И WATCHDOG
  * @version 6.3
- * 
- * Содержит подключение, переподключение, watchdog и обработку сообщений
  * ============================================================================
  */
 
-// ============================================================================
-// 7. WEBSOCKET И WATCHDOG
-// ============================================================================
 function startWatchdog() {
     if (state.watchdogTimer) clearInterval(state.watchdogTimer);
     state.watchdogTimer = setInterval(() => {
@@ -34,7 +29,6 @@ function scheduleReconnect() {
     state.reconnectAttempts++;
     dom.updateStatus('offline', state.reconnectAttempts);
     
-    // Расчёт задержки: 2, 4, 8, 16, 30, 30... секунд
     const delays = [2, 4, 8, 16, 30, 30, 30, 30, 30, 30];
     const index = Math.min(state.reconnectAttempts - 1, delays.length - 1);
     const baseDelay = delays[index];
@@ -90,7 +84,6 @@ function connectWebSocket() {
     state.socket.onclose = (event) => {
         clearTimeout(connectionTimeout);
         console.log(`[WS] Закрыто, код: ${event.code}`);
-        // Если код 1000 — нормальное закрытие (мы сами закрыли), не переподключаемся
         if (event.code === 1000) {
             console.log('[WS] Штатное закрытие');
             return;
@@ -103,21 +96,14 @@ function connectWebSocket() {
         try {
             const data = JSON.parse(event.data);
             
-            // ================================================================
-            // 1. Wi-Fi СТАТУС
-            // ================================================================
             if (data.mode && data.ip) {
                 dom.updateWifiStatus(data.mode, data.ip);
                 return;
             }
             
-            // ================================================================
-            // 2. ДАННЫЕ ТЕМПЕРАТУР (С TX И RSSI)
-            // ================================================================
             if (data.temps) {
                 processData(data);
                 
-                // ---- ОБНОВЛЯЕМ TX И RSSI ----
                 if (data.tx !== undefined && data.tx >= 0) {
                     document.getElementById('wifiTxValue').textContent = data.tx;
                 } else {
@@ -126,25 +112,14 @@ function connectWebSocket() {
                 if (data.rssi !== undefined) {
                     document.getElementById('wifiRssiValue').textContent = data.rssi;
                 }
-                
                 return;
             }
             
-            // ================================================================
-            // 3. СТАТУС (сообщения от ESP)
-            // ================================================================
             if (data.status) {
                 console.log('[WiFi]', data.status);
-                const connectBtn = dom.get('wifiConnectBtn');
-                const apBtn = dom.get('wifiAPBtn');
-                if (connectBtn) { connectBtn.textContent = 'Подключить'; connectBtn.disabled = false; }
-                if (apBtn) { apBtn.textContent = 'AP режим'; apBtn.disabled = false; }
                 return;
             }
             
-            // ================================================================
-            // 4. ЗВУКОВЫЕ КОМАНДЫ
-            // ================================================================
             if (data.sound) {
                 console.log('[SOUND] Получена команда:', data.sound);
                 switch (data.sound) {
