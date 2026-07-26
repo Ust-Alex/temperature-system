@@ -1,17 +1,48 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <!-- ============================================================
+         КОДИРОВКА И НАСТРОЙКИ ЭКРАНА
+         ============================================================ -->
     <meta charset="utf-8">
+    
+    <!-- 
+      viewport — управляет масштабированием на мобильных устройствах:
+      - width=device-width: ширина = ширина экрана
+      - initial-scale=1.0: без зума при загрузке
+    -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- 
+      apple-mobile-web-app-capable — для Safari и Яндекс.Браузера на iOS:
+      убирает панель браузера, если страница добавлена на экран "Домой"
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+    <!-- 
+      mobile-web-app-capable — для Chrome и других браузеров:
+      аналогичный эффект полноэкранного режима
+    -->
+    <meta name="mobile-web-app-capable" content="yes">
+    
     <title>Термометр</title>
     
-    <!-- Chart.js -->
+    <!-- ============================================================
+         ПОДКЛЮЧАЕМ ВНЕШНИЕ БИБЛИОТЕКИ
+         ============================================================ -->
+    
+    <!-- Chart.js — библиотека для построения графиков -->
     <script src="chart.umd.min_V4_4_4.js"></script>
-    <!-- Hammer.js для распознавания жестов -->
+    
+    <!-- Hammer.js — для распознавания жестов (зум, свайпы) -->
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
-    <!-- Плагин зума для Chart.js -->
+    
+    <!-- chartjs-plugin-zoom — добавляет зум и панорамирование к Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     
+    <!-- ============================================================
+         ПОДКЛЮЧАЕМ СТИЛИ
+         ============================================================ -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,10 +53,9 @@
         <div class="mode-bar mode0" id="modeDisplay">
             <!-- Время последнего измерения (слева) -->
             <span class="mode-lasttime" id="modeLastTime">--:--:--</span>
-            <!-- Текст режима (по центру) -->
-            <span class="mode-text" id="modeText">MODE 1 (СТАБИЛИЗАЦИЯ)</span>
-            <!-- Время стабилизации (справа) -->
-            <span class="mode-time" id="modeTime">00:00</span>
+            
+            <!-- Текст режима (по центру) + время стабилизации (внутри) -->
+            <span class="mode-text" id="modeText">MODE 1 (СТАБИЛИЗАЦИЯ) 00:00</span>
         </div>
     </div>
 
@@ -34,7 +64,10 @@
          ================================================================ -->
     <div class="window window-left" id="windowLeft">
         <div class="left-panel">
-            <!-- 6 КАРТОЧЕК ТЕМПЕРАТУР -->
+            
+            <!-- ============================================================
+                 6 КАРТОЧЕК ТЕМПЕРАТУР
+                 ============================================================ -->
             <div class="temp-card" id="card0" style="color: #FF00FF;">--.--</div>   <!-- 0: ВЫХОД -->
             <div class="temp-card" id="card1" style="color: #FFA500;">--.--</div>   <!-- 1: СТЕНКА 100см -->
             <div class="temp-card" id="card2" style="color: #00FFFF;">--.--</div>   <!-- 2: СТЕНКА 75см -->
@@ -42,18 +75,25 @@
             <div class="temp-card" id="card4" style="color: #00FF00;">--.--</div>   <!-- 4: ГИЛЬЗА -->
             <div class="temp-card" id="card5" style="color: #FF4500;">--.--</div>   <!-- 5: КУБ -->
             
-            <!-- КНОПКИ МАСШТАБА -->
+            <!-- ============================================================
+                 КНОПКИ МАСШТАБА ВРЕМЕНИ
+                 ============================================================ -->
             <button class="scale-btn" id="btn1h" data-range="1ч">1ч</button>
             <button class="scale-btn" id="btn30m" data-range="30м">30м</button>
             <button class="scale-btn" id="btn15m" data-range="15м">15м</button>
             <button class="scale-btn" id="btn5m" data-range="5м">5м</button>
             <button class="scale-btn active" id="btn1m" data-range="1м">1м</button>
             
-            <!-- ПАНЕЛЬ WI-FI -->
+            <!-- ============================================================
+                 ПАНЕЛЬ WI-FI (IP, TX, RSSI)
+                 ============================================================ -->
             <div class="panel-wifi" id="panelWifi">
+                <!-- IP-адрес -->
                 <div class="wifi-ip" id="wifiIP">
                     <span id="wifiIPValue">--</span>
                 </div>
+                
+                <!-- Качество сигнала -->
                 <div class="wifi-signal" id="wifiSignal">
                     <div class="wifi-signal-row">
                         <span>TX: </span>
@@ -68,8 +108,11 @@
                 </div>
             </div>
             
-            <!-- НИЖНИЙ БЛОК -->
+            <!-- ============================================================
+                 НИЖНИЙ БЛОК (диапазон температур + статус)
+                 ============================================================ -->
             <div class="panel-bottom">
+                <!-- Поля ввода "до" и "от" -->
                 <div class="panel-range-item">
                     <label>до</label>
                     <input type="number" id="maxTemp" value="100" step="1" min="-50" max="150">
@@ -78,6 +121,8 @@
                     <label>от</label>
                     <input type="number" id="minTemp" value="20" step="1" min="-50" max="150">
                 </div>
+                
+                <!-- Индикатор подключения -->
                 <div class="panel-status" id="panelStatus">
                     <span class="panel-status-dot offline" id="panelStatusDot"></span>
                     <span class="panel-status-text offline" id="panelStatusText">OFF</span>
@@ -106,17 +151,17 @@
     </div>
 
     <!-- ================================================================
-         ПОДКЛЮЧЕНИЕ JS
+         ПОДКЛЮЧЕНИЕ JS (порядок важен!)
          ================================================================ -->
-    <script src="js/config.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/dom.js"></script>
-    <script src="js/sound.js"></script>
-    <script src="js/chart.js"></script>
-    <script src="js/websocket.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/controls.js"></script>
-    <script src="js/wifi.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/config.js"></script>      <!-- Настройки -->
+    <script src="js/state.js"></script>       <!-- Глобальное состояние -->
+    <script src="js/dom.js"></script>         <!-- DOM-утилиты -->
+    <script src="js/sound.js"></script>       <!-- Звуковое сопровождение -->
+    <script src="js/chart.js"></script>       <!-- График -->
+    <script src="js/websocket.js"></script>   <!-- WebSocket и watchdog -->
+    <script src="js/ui.js"></script>          <!-- Обновление интерфейса -->
+    <script src="js/controls.js"></script>    <!-- Кнопки и поля ввода -->
+    <script src="js/wifi.js"></script>        <!-- Управление Wi-Fi -->
+    <script src="js/main.js"></script>        <!-- Точка входа -->
 </body>
 </html>
