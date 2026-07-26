@@ -2,18 +2,29 @@
  * ============================================================================
  * @file dom.js
  * @brief DOM-УТИЛИТЫ
- * @version 6.2
+ * @version 7.1
  * 
  * Содержит объект dom для работы с DOM-элементами и обновления интерфейса
  * ============================================================================
  */
 
 // ============================================================================
-// 4. DOM УТИЛИТЫ
+// 1. ОБЪЕКТ DOM
 // ============================================================================
+
 const dom = {
+    /**
+     * get — получение элемента по ID
+     * @param {string} id - ID элемента
+     * @returns {HTMLElement|null}
+     */
     get: (id) => document.getElementById(id),
     
+    /**
+     * updateStatus — обновление индикатора подключения
+     * @param {string} status - 'online' или 'offline'
+     * @param {number} attempts - количество попыток переподключения
+     */
     updateStatus(status, attempts = 0) {
         const dot = this.get('panelStatusDot');
         const text = this.get('panelStatusText');
@@ -39,6 +50,12 @@ const dom = {
         }
     },
     
+    /**
+     * updateCard — обновление карточки температуры
+     * @param {string} cardId - ID карточки (card0..card5)
+     * @param {number} value - значение температуры
+     * @param {number} index - индекс датчика (0..5)
+     */
     updateCard(cardId, value, index) {
         const card = this.get(cardId);
         if (!card) return;
@@ -49,14 +66,30 @@ const dom = {
         state.lastValues.temps[index] = value;
     },
     
+    /**
+     * updateDebugInfo — обновление нижней панели отладки
+     * Также обновляет время последнего измерения в верхней строке
+     */
     updateDebugInfo() {
+        // ----- НИЖНЯЯ ПАНЕЛЬ -----
         this.get('debugBuffer').textContent = `${state.dataBuffer.count}/${CONFIG.MAX_POINTS}`;
         this.get('debugRange').textContent = state.currentRange;
         const buttonName = Object.keys(CONFIG.RANGES).find(k => CONFIG.RANGES[k] === state.currentRange) || '?';
         this.get('debugActive').textContent = buttonName;
         this.get('debugLastTime').textContent = state.dataBuffer.lastTime || '--:--:--';
+        
+        // ----- ВЕРХНЯЯ СТРОКА (время последнего измерения) -----
+        const modeLastTime = this.get('modeLastTime');
+        if (modeLastTime) {
+            modeLastTime.textContent = state.dataBuffer.lastTime || '--:--:--';
+        }
     },
     
+    /**
+     * updateWifiStatus — обновление панели Wi-Fi
+     * @param {string} mode - 'AP' или 'STA'
+     * @param {string} ip - IP-адрес
+     */
     updateWifiStatus(mode, ip) {
         const modeEl = this.get('wifiModeValue');
         const ipEl = this.get('wifiIPValue');

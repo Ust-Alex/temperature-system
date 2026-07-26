@@ -15,19 +15,26 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Верхнее окно (режим) -->
+    <!-- ================================================================
+         ВЕРХНЕЕ ОКНО (режим работы + время)
+         ================================================================ -->
     <div class="window window-header" id="windowHeader">
         <div class="mode-bar mode0" id="modeDisplay">
-            MODE 1 (СТАБИЛИЗАЦИЯ) 00:00
+            <!-- Время последнего измерения (слева) -->
+            <span class="mode-lasttime" id="modeLastTime">--:--:--</span>
+            <!-- Текст режима (по центру) -->
+            <span class="mode-text" id="modeText">MODE 1 (СТАБИЛИЗАЦИЯ)</span>
+            <!-- Время стабилизации (справа) -->
+            <span class="mode-time" id="modeTime">00:00</span>
         </div>
     </div>
 
-    <!-- Левое окно (панель управления) -->
+    <!-- ================================================================
+         ЛЕВОЕ ОКНО (панель управления)
+         ================================================================ -->
     <div class="window window-left" id="windowLeft">
         <div class="left-panel">
-            <!-- ================================================================
-                 6 КАРТОЧЕК ТЕМПЕРАТУР
-                 ================================================================ -->
+            <!-- 6 КАРТОЧЕК ТЕМПЕРАТУР -->
             <div class="temp-card" id="card0" style="color: #FF00FF;">--.--</div>   <!-- 0: ВЫХОД -->
             <div class="temp-card" id="card1" style="color: #FFA500;">--.--</div>   <!-- 1: СТЕНКА 100см -->
             <div class="temp-card" id="card2" style="color: #00FFFF;">--.--</div>   <!-- 2: СТЕНКА 75см -->
@@ -35,16 +42,14 @@
             <div class="temp-card" id="card4" style="color: #00FF00;">--.--</div>   <!-- 4: ГИЛЬЗА -->
             <div class="temp-card" id="card5" style="color: #FF4500;">--.--</div>   <!-- 5: КУБ -->
             
-            <!-- Кнопки масштаба -->
+            <!-- КНОПКИ МАСШТАБА -->
             <button class="scale-btn" id="btn1h" data-range="1ч">1ч</button>
             <button class="scale-btn" id="btn30m" data-range="30м">30м</button>
             <button class="scale-btn" id="btn15m" data-range="15м">15м</button>
             <button class="scale-btn" id="btn5m" data-range="5м">5м</button>
             <button class="scale-btn active" id="btn1m" data-range="1м">1м</button>
             
-            <!-- ================================================================
-                 ПАНЕЛЬ WI-FI (только IP, TX, RSSI)
-                 ================================================================ -->
+            <!-- ПАНЕЛЬ WI-FI -->
             <div class="panel-wifi" id="panelWifi">
                 <div class="wifi-ip" id="wifiIP">
                     <span id="wifiIPValue">--</span>
@@ -63,7 +68,7 @@
                 </div>
             </div>
             
-            <!-- Нижний блок -->
+            <!-- НИЖНИЙ БЛОК -->
             <div class="panel-bottom">
                 <div class="panel-range-item">
                     <label>до</label>
@@ -81,12 +86,16 @@
         </div>
     </div>
 
-    <!-- Окно графика -->
+    <!-- ================================================================
+         ОКНО ГРАФИКА
+         ================================================================ -->
     <div class="window window-graph" id="windowGraph">
         <canvas id="tempChart"></canvas>
     </div>
 
-    <!-- Нижнее окно (отладка) -->
+    <!-- ================================================================
+         НИЖНЕЕ ОКНО (отладка)
+         ================================================================ -->
     <div class="window window-debug" id="windowDebug">
         <div class="debug-bar" id="debugBar">
             <span>Буфер: <span class="debug-value" id="debugBuffer">0/7200</span></span>
@@ -96,7 +105,9 @@
         </div>
     </div>
 
-    <!-- Подключение модулей JS (порядок важен!) -->
+    <!-- ================================================================
+         ПОДКЛЮЧЕНИЕ JS
+         ================================================================ -->
     <script src="js/config.js"></script>
     <script src="js/state.js"></script>
     <script src="js/dom.js"></script>
