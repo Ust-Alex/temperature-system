@@ -38,14 +38,15 @@ function initChart() {
         type: 'line',
         data: { labels: [], datasets: datasets },
         options: {
-            responsive: true,
+            responsive: true, 
             maintainAspectRatio: false,
             animation: { duration: 100 },
             spanGaps: true,
             devicePixelRatio: 1,
             scales: {
                 y: {
-                    min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
+                    reverse: true, // С этим кодом график перевернется, и ось Y будет идти сверху вниз (от максимума к минимуму)
+					min: CONFIG.ZOOM_LIMITS.MIN_TEMP,
                     max: CONFIG.ZOOM_LIMITS.MAX_TEMP,
                     grid: { color: '#444' },
                     ticks: {

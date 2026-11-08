@@ -2,10 +2,11 @@
  * ============================================================================
  * @file ui.js
  * @brief ОБНОВЛЕНИЕ ИНТЕРФЕЙСА
- * @version 7.1
+ * @version 7.2
  * 
  * ОСОБЕННОСТИ:
- * - Обновление верхней строки: режим, время стабилизации, время последнего измерения
+ * - Верхняя строка: слева — время последнего измерения,
+ *   по центру — текст режима + время стабилизации (вместе, как в оригинале)
  * - Обновление карточек температур
  * - Управление звуковыми сигналами
  * ============================================================================
@@ -22,10 +23,9 @@
  * @param {string} timeStr - время стабилизации (приходит с ESP)
  * @param {number|null} baseTemp - базовая температура для режима 2
  * 
- * Верхняя строка содержит три элемента:
+ * Верхняя строка содержит два элемента:
  * - Слева: время последнего измерения (из state.dataBuffer.lastTime)
- * - По центру: текст режима (MODE 1 / MODE 2)
- * - Справа: время стабилизации (timeStr)
+ * - По центру: текст режима + время стабилизации (как было в оригинале)
  */
 function updateModeDisplay(mode, color, timeStr, baseTemp) {
     const modeDisplay = dom.get('modeDisplay');
@@ -44,30 +44,31 @@ function updateModeDisplay(mode, color, timeStr, baseTemp) {
     
     // ----- ПОЛУЧАЕМ ЭЛЕМЕНТЫ ДЛЯ ОБНОВЛЕНИЯ -----
     const modeText = dom.get('modeText');
-    const modeTime = dom.get('modeTime');
     const modeLastTime = dom.get('modeLastTime');
     
-    let newClass, newText, timeDisplay;
+    let newClass, fullText;
+    const timeDisplay = timeStr || '00:00';
     
-    // ----- ОПРЕДЕЛЯЕМ РЕЖИМ -----
+    // ----- ОПРЕДЕЛЯЕМ РЕЖИМ И ФОРМИРУЕМ ПОЛНЫЙ ТЕКСТ -----
     if (mode === 0) {
         newClass = 'mode-bar mode0';
-        newText = 'MODE 1 (СТАБИЛИЗАЦИЯ)';
-        timeDisplay = timeStr || '00:00';
+        fullText = `MODE 1 (СТАБИЛИЗАЦИЯ) ${timeDisplay}`;
     } else {
         const colorClass = color === 1 ? 'mode1-yellow' : (color === 2 ? 'mode1-red' : 'mode1-green');
         newClass = `mode-bar ${colorClass}`;
         const baseStr = baseTemp !== null ? baseTemp.toFixed(2) : '--.--';
-        newText = `MODE 2 (РАБОЧИЙ ${baseStr})`;
-        timeDisplay = timeStr || '00:00';
+        fullText = `MODE 2 (РАБОЧИЙ ${baseStr}) ${timeDisplay}`;
     }
     
     // ----- ПРИМЕНЯЕМ ИЗМЕНЕНИЯ -----
     modeDisplay.className = newClass;
-    if (modeText) modeText.textContent = newText;
-    if (modeTime) modeTime.textContent = timeDisplay;
     
-    // 👇 ВРЕМЯ ПОСЛЕДНЕГО ИЗМЕРЕНИЯ (из state.dataBuffer.lastTime)
+    // Обновляем текст режима + время стабилизации (вместе, по центру)
+    if (modeText) {
+        modeText.textContent = fullText;
+    }
+    
+    // Обновляем время последнего измерения (слева)
     if (modeLastTime) {
         modeLastTime.textContent = state.dataBuffer.lastTime || '--:--:--';
     }

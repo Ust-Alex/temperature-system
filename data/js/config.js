@@ -38,7 +38,7 @@ const CONFIG = {
     },
     ZOOM_LIMITS: {
         MIN_TEMP: 20,
-        MAX_TEMP: 90,
+        MAX_TEMP: 120,
         MIN_RANGE: 0.1
     },
     DATASET_NAMES: ['Выход', '100см', '75см', '50см', 'Гильза', 'Куб'],
