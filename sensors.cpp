@@ -1,18 +1,19 @@
 /**
  * ============================================================================
  * ФАЙЛ: sensors.cpp
- * МОДУЛЬ УПРАВЛЕНИЯ ДАТЧИКАМИ DS18B20 (4 ШИНЫ, 6 ДАТЧИКОВ)
- * ВЕРСИЯ: 4.1 (МЕДИАННЫЙ ФИЛЬТР ДЛЯ ВЫХОДА И КУБА)
+ * МОДУЛЬ УПРАВЛЕНИЯ ДАТЧИКАМИ DS18B20 (5 ШИН, 7 ДАТЧИКОВ)
+ * ВЕРСИЯ: 5.0 (ДОБАВЛЕН ДАТЧИК ВОДА)
  * 
  * РАСПРЕДЕЛЕНИЕ ДАТЧИКОВ ПО ШИНАМ:
  * - Шина A (GPIO4)  → датчик гильзы (индекс 4) - БЕЗ привязки по адресу
  * - Шина B (GPIO16) → датчики стенок (индексы 1,2,3) - ПРИВЯЗКА по адресу
- * - Шина C (GPIO21) → датчик выхода (индекс 0) - БЕЗ привязки по адресу
- * - Шина D (GPIO22) → датчик куба (индекс 5) - БЕЗ привязки по адресу
+ * - Шина C (GPIO22) → датчик выхода (индекс 0) - БЕЗ привязки по адресу
+ * - Шина D (GPIO21) → датчик куба (индекс 5) - БЕЗ привязки по адресу
+ * - Шина E (GPIO17) → датчик вода (индекс 6) - БЕЗ привязки по адресу
  * 
  * ФИЛЬТРАЦИЯ:
- * - Скользящее среднее (буфер 5) → для гильзы (4)
- * - Медианный фильтр (буфер 5) → для стенок (1,2,3), выхода (0), куба (5)
+ * - Скользящее среднее (буфер 5) → для гильзы (4) и выхода (0)
+ * - Медианный фильтр (буфер 5) → для стенок (1,2,3), куба (5) и воды (6)
  * ============================================================================
  */
 
@@ -25,14 +26,14 @@
 // ЛОКАЛЬНЫЕ ДАННЫЕ ДЛЯ ФИЛЬТРОВ
 // ============================================================================
 
-// Буфер для скользящего среднего (только гильза, индекс 4)
-static float avgBuffer[6][5];
-static int avgIndex[6] = {0};
-static float avgSum[6] = {0};
+// Буфер для скользящего среднего (только гильза и выход)
+static float avgBuffer[7][5];
+static int avgIndex[7] = {0};
+static float avgSum[7] = {0};
 
-// Буфер для медианного фильтра (стенки 1,2,3 + выход 0 + куб 5)
-static float medBuffer[6][5];  // теперь для всех, кроме гильзы
-static int medIndex[6] = {0};
+// Буфер для медианного фильтра (стенки, куб, вода)
+static float medBuffer[7][5];
+static int medIndex[7] = {0};
 
 // ============================================================================
 // АДРЕСА ДАТЧИКОВ ДЛЯ ШИНЫ B (СТЕНКИ, ИНДЕКСЫ 1,2,3)
@@ -47,7 +48,6 @@ static const uint8_t KNOWN_ADDR_WALLS[3][8] = {
 // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: СОРТИРОВКА ДЛЯ МЕДИАНЫ
 // ============================================================================
 static void sort5(float* arr) {
-    // Простая сортировка вставками для 5 элементов
     for (int i = 1; i < 5; i++) {
         float key = arr[i];
         int j = i - 1;
@@ -60,26 +60,23 @@ static void sort5(float* arr) {
 }
 
 // ============================================================================
-// МЕДИАННЫЙ ФИЛЬТР (ДЛЯ ВСЕХ, КРОМЕ ГИЛЬЗЫ)
+// МЕДИАННЫЙ ФИЛЬТР (ДЛЯ СТЕНОК, КУБА, ВОДЫ)
 // ============================================================================
 static float filterMedian(int sensorIdx, float newValue) {
-    // Записываем новое значение в буфер
     medBuffer[sensorIdx][medIndex[sensorIdx]] = newValue;
     medIndex[sensorIdx] = (medIndex[sensorIdx] + 1) % 5;
     
-    // Копируем буфер во временный массив для сортировки
     float temp[5];
     for (int i = 0; i < 5; i++) {
         temp[i] = medBuffer[sensorIdx][i];
     }
     
-    // Сортируем и возвращаем медиану (элемент с индексом 2)
     sort5(temp);
     return temp[2];
 }
 
 // ============================================================================
-// ФИЛЬТР СКОЛЬЗЯЩЕГО СРЕДНЕГО (ТОЛЬКО ДЛЯ ГИЛЬЗЫ, ИНДЕКС 4)
+// ФИЛЬТР СКОЛЬЗЯЩЕГО СРЕДНЕГО (ДЛЯ ГИЛЬЗЫ И ВЫХОДА)
 // ============================================================================
 static float filterMovingAverage(int sensorIdx, float newValue) {
     avgSum[sensorIdx] -= avgBuffer[sensorIdx][avgIndex[sensorIdx]];
@@ -94,15 +91,15 @@ static float filterMovingAverage(int sensorIdx, float newValue) {
 // ИНИЦИАЛИЗАЦИЯ ФИЛЬТРОВ
 // ============================================================================
 static void init_filters() {
-    // Инициализация скользящего среднего (только для гильзы)
-    for (int i = 0; i < 6; i++) {
+    // Инициализация скользящего среднего (для гильзы и выхода)
+    for (int i = 0; i < 7; i++) {
         for (int j = 0; j < 5; j++) avgBuffer[i][j] = 18.0f;
         avgSum[i] = 90.0f;
         avgIndex[i] = 0;
     }
     
-    // Инициализация медианного фильтра (для всех, кроме гильзы)
-    for (int i = 0; i < 6; i++) {
+    // Инициализация медианного фильтра (для остальных)
+    for (int i = 0; i < 7; i++) {
         for (int j = 0; j < 5; j++) medBuffer[i][j] = 18.0f;
         medIndex[i] = 0;
     }
@@ -112,21 +109,23 @@ static void init_filters() {
 // ИНИЦИАЛИЗАЦИЯ МОДУЛЯ ДАТЧИКОВ
 // ============================================================================
 void sensors_init() {
-    // Запуск всех 4 шин
+    // Запуск всех 5 шин
     sensorsA.begin();
     sensorsB.begin();
     sensorsC.begin();
     sensorsD.begin();
+    sensorsE.begin();
     
     // Установка разрешения для всех шин
     sensorsA.setResolution(RESOLUTION);
     sensorsB.setResolution(RESOLUTION);
     sensorsC.setResolution(RESOLUTION);
     sensorsD.setResolution(RESOLUTION);
+    sensorsE.setResolution(RESOLUTION);
     
     init_filters();
     sensors_scan_all();
-    Serial.println("[SENSORS] OK (4 шины, 6 датчиков)");
+    Serial.println("[SENSORS] OK (5 шин, 7 датчиков)");
 }
 
 // ============================================================================
@@ -134,23 +133,21 @@ void sensors_init() {
 // ============================================================================
 void sensors_scan_all() {
     // Сброс флагов
-    for (int i = 0; i < 6; i++) sensors[i].found = false;
+    for (int i = 0; i < 7; i++) sensors[i].found = false;
 
     DeviceAddress addr;
     
     // ============================================================
-    // ШИНА C (GPIO21) — датчик ВЫХОД (индекс 0)
-    // БЕЗ привязки по адресу — берём первый датчик на шине
+    // ШИНА C (GPIO22) — датчик ВЫХОД (индекс 0)
     // ============================================================
     if (sensorsC.getAddress(addr, 0)) {
         sensors[0].found = true;
         memcpy(sensors[0].addr, addr, 8);
-        Serial.println("[SENSORS] ВЫХОД найден на шине C (GPIO21)");
+        Serial.println("[SENSORS] ВЫХОД найден на шине C (GPIO22)");
     }
     
     // ============================================================
     // ШИНА B (GPIO16) — датчики стенок (индексы 1,2,3)
-    // ПРИВЯЗКА по фиксированным адресам
     // ============================================================
     int cnt = sensorsB.getDeviceCount();
     for (int i = 0; i < cnt && i < 3; i++) {
@@ -168,7 +165,6 @@ void sensors_scan_all() {
     
     // ============================================================
     // ШИНА A (GPIO4) — датчик ГИЛЬЗА (индекс 4)
-    // БЕЗ привязки по адресу — берём первый датчик на шине
     // ============================================================
     if (sensorsA.getAddress(addr, 0)) {
         sensors[4].found = true;
@@ -177,19 +173,27 @@ void sensors_scan_all() {
     }
     
     // ============================================================
-    // ШИНА D (GPIO22) — датчик КУБ (индекс 5)
-    // БЕЗ привязки по адресу — берём первый датчик на шине
+    // ШИНА D (GPIO21) — датчик КУБ (индекс 5)
     // ============================================================
     if (sensorsD.getAddress(addr, 0)) {
         sensors[5].found = true;
         memcpy(sensors[5].addr, addr, 8);
-        Serial.println("[SENSORS] КУБ найден на шине D (GPIO22)");
+        Serial.println("[SENSORS] КУБ найден на шине D (GPIO21)");
+    }
+
+    // ============================================================
+    // ШИНА E (GPIO17) — датчик ВОДА (индекс 6)
+    // ============================================================
+    if (sensorsE.getAddress(addr, 0)) {
+        sensors[6].found = true;
+        memcpy(sensors[6].addr, addr, 8);
+        Serial.println("[SENSORS] ВОДА найдена на шине E (GPIO17)");
     }
 
     // Диагностика
     int found = 0;
-    for (int i = 0; i < 6; i++) if (sensors[i].found) found++;
-    Serial.printf("[SENSORS] Найдено %d/6 датчиков\n", found);
+    for (int i = 0; i < 7; i++) if (sensors[i].found) found++;
+    Serial.printf("[SENSORS] Найдено %d/7 датчиков\n", found);
     if (!sensors[4].found) Serial.println("[SENSORS] КРИТИЧНО: Нет гильзы!");
 }
 
@@ -201,13 +205,14 @@ void sensors_request_temperatures() {
     sensorsB.requestTemperatures();
     sensorsC.requestTemperatures();
     sensorsD.requestTemperatures();
+    sensorsE.requestTemperatures();
 }
 
 // ============================================================================
 // ЧТЕНИЕ ТЕМПЕРАТУР СО ВСЕХ ШИН
 // ============================================================================
 void sensors_read_temperatures() {
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (!sensors[i].found) continue;
         
         // Выбираем правильную шину по индексу датчика
@@ -215,6 +220,7 @@ void sensors_read_temperatures() {
         if (i == 4) bus = &sensorsA;       // гильза (шина A)
         else if (i == 0) bus = &sensorsC;  // выход (шина C)
         else if (i == 5) bus = &sensorsD;  // куб (шина D)
+        else if (i == 6) bus = &sensorsE;  // вода (шина E)
         else bus = &sensorsB;              // стенки (шина B, индексы 1,2,3)
         
         float t = bus->getTempC(sensors[i].addr);
@@ -235,7 +241,7 @@ void sensors_update_all() {
     delay(CONVERSION_DELAY_MS);
     sensors_read_temperatures();
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (!sensors[i].found || !isValidTemperature(sensors[i].temp)) continue;
 
         float filteredTemp;
@@ -243,11 +249,11 @@ void sensors_update_all() {
         // ================================================================
         // ВЫБОР ФИЛЬТРА В ЗАВИСИМОСТИ ОТ ТИПА ДАТЧИКА
         // ================================================================
-        if (i == 4) {
-            // Гильза — скользящее среднее (плавное сглаживание)
+        if (i == 0 || i == 4) {
+            // Выход и Гильза — скользящее среднее (плавное сглаживание)
             filteredTemp = filterMovingAverage(i, sensors[i].temp);
         } else {
-            // Все остальные (стенки, выход, куб) — медианный фильтр
+            // Все остальные (стенки, куб, вода) — медианный фильтр
             filteredTemp = filterMedian(i, sensors[i].temp);
         }
         
@@ -261,11 +267,11 @@ void sensors_update_all() {
 // ДОСТУП К ДАННЫМ
 // ============================================================================
 float sensors_get_temp(int idx) {
-    return (idx >= 0 && idx < 6) ? sensors[idx].temp : TEMP_NO_DATA;
+    return (idx >= 0 && idx < 7) ? sensors[idx].temp : TEMP_NO_DATA;
 }
 
 bool sensors_is_found(int idx) {
-    return (idx >= 0 && idx < 6) ? sensors[idx].found : false;
+    return (idx >= 0 && idx < 7) ? sensors[idx].found : false;
 }
 
 float sensors_get_filtered(int idx) {

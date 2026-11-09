@@ -11,12 +11,12 @@
 #include <freertos/semphr.h>
 
 // ============================================================================
-// СТРУКТУРЫ ДАННЫХ (ДЛЯ 6 ДАТЧИКОВ)
+// СТРУКТУРЫ ДАННЫХ (ДЛЯ 7 ДАТЧИКОВ)
 // ============================================================================
 
 typedef struct {
-  float temps[6];           // Температуры датчиков (6 шт.)
-  uint8_t colors[6];        // Цвета для каждого датчика
+  float temps[7];           // Температуры датчиков (7 шт.)
+  uint8_t colors[7];        // Цвета для каждого датчика
   uint8_t mode;             // Текущий режим: 0 = MODE1, 1 = MODE2
   bool needsRedraw;         // Флаг необходимости полной перерисовки
 } SystemData_t;
@@ -41,16 +41,18 @@ typedef struct {
 // ОБЪЯВЛЕНИЯ ВСЕХ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ (extern)
 // ============================================================================
 
-// Объекты аппаратуры (4 шины)
+// Объекты аппаратуры (5 шин)
 extern TFT_eSPI tft;
 extern OneWire oneWireA;
 extern OneWire oneWireB;
 extern OneWire oneWireC;
 extern OneWire oneWireD;
+extern OneWire oneWireE;
 extern DallasTemperature sensorsA;
 extern DallasTemperature sensorsB;
 extern DallasTemperature sensorsC;
 extern DallasTemperature sensorsD;
+extern DallasTemperature sensorsE;
 extern HardwareSerial dfplayerSerial;
 extern DFRobotDFPlayerMini myDFPlayer;
 
@@ -62,7 +64,7 @@ extern QueueHandle_t eventQueue;
 
 // Системные данные
 extern SystemData_t sysData;
-extern Sensor_t sensors[6];
+extern Sensor_t sensors[7];
 
 // Флаги состояния
 extern bool baseSaved;
@@ -81,13 +83,13 @@ extern float guildBaseTemp;
 extern uint8_t guildColorState;
 
 // КЭШ ОТОБРАЖЕНИЯ
-extern float lastDisplayTemps[6];
+extern float lastDisplayTemps[7];
 extern String lastTimeString;
 extern String lastMode2TimeString;
 extern bool displayInitialized;
 
 // Константы для дисплея
-extern const char* sensorNames[6];
+extern const char* sensorNames[7];
 extern int bigFontHeight;
 extern int deltaFontHeight;
 extern int smallFontHeight;
@@ -96,9 +98,9 @@ extern int maxTempWidth;
 // ============================================================================
 // ПАРАМЕТРЫ ОТРИСОВКИ ДАТЧИКОВ (ЯВНЫЕ КООРДИНАТЫ И ШРИФТЫ)
 // ============================================================================
-extern const int sensorX[6];
-extern const int sensorY[6];
-extern const int sensorFont[6];
+extern const int sensorX[7];
+extern const int sensorY[7];
+extern const int sensorFont[7];
 
 // ============================================================================
 // ПРЕДРАССЧИТАННЫЕ РАЗМЕРЫ ДЛЯ ОЧИСТКИ ОБЛАСТИ

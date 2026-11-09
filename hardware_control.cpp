@@ -2,7 +2,7 @@
  * ============================================================================
  * ФАЙЛ: hardware_control.cpp
  * РЕАЛИЗАЦИЯ ФУНКЦИЙ УПРАВЛЕНИЯ АППАРАТНОЙ ЧАСТЬЮ СИСТЕМЫ
- * ВЕРСИЯ: 6.0 (ДЛЯ 6 ДАТЧИКОВ, 4 ШИН)
+ * ВЕРСИЯ: 6.1 (ДЛЯ 7 ДАТЧИКОВ, 5 ШИН)
  * ============================================================================
  */
 
@@ -21,7 +21,7 @@ void initHardware() {
   delay(1000);
   
   Serial.println("\n" + String(60, '='));
-  Serial.println("    СИСТЕМА МОНИТОРИНГА ТЕМПЕРАТУР - 6 ДАТЧИКОВ, 4 ШИНЫ");
+  Serial.println("    СИСТЕМА МОНИТОРИНГА ТЕМПЕРАТУР - 7 ДАТЧИКОВ, 5 ШИН");
   Serial.println(String(60, '='));
 
   // 2. ИНИЦИАЛИЗАЦИЯ TFT ДИСПЛЕЯ
@@ -65,13 +65,9 @@ void initHardware() {
   tft.print("192.168.4.1");
   delay(1000);
 
-  // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE (4 ШИНЫ)
+  // 3. ИНИЦИАЛИЗАЦИЯ ШИН 1-WIRE (5 ШИН)
+  // Все begin() и setResolution() уже вызываются внутри sensors_init()
   Serial.println("Инициализация шин 1-Wire...");
-  sensorsA.begin();
-  sensorsB.begin();
-  sensorsC.begin();
-  sensorsD.begin();
-
   sensors_init();
 
   // 4. ИНИЦИАЛИЗАЦИЯ ЭНКОДЕРА
@@ -85,7 +81,7 @@ void initHardware() {
   sysData.mode = 0;
   sysData.needsRedraw = true;
 
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 7; i++) {
     sysData.temps[i] = 0.0f;
     sysData.colors[i] = 0;
   }

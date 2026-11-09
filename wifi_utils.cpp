@@ -39,9 +39,9 @@ int8_t getRealTxPower() {
 // ФОРМИРОВАНИЕ JSON С ТЕМПЕРАТУРАМИ, TX И RSSI
 // ============================================================================
 static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
-    // ---- Сбор температур с 6 датчиков ----
-    float temps[6];
-    for (int i = 0; i < 6; i++) {
+    // ---- Сбор температур с 7 датчиков ----
+    float temps[7];
+    for (int i = 0; i < 7; i++) {
         temps[i] = sensors[i].found ? sensors[i].temp : 0.0f;
     }
     
@@ -70,10 +70,10 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
     int8_t txPower = getRealTxPower();
     int rssi = WiFi.RSSI();
     
-    // ---- Сборка JSON с добавленными полями ----
+    // ---- Сборка JSON (добавлено 7-е значение) ----
     snprintf(buffer, bufferSize,
              "{"
-             "\"temps\":[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f],"
+             "\"temps\":[%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f],"
              "\"mode\":%d,"
              "\"color\":%d,"
              "\"time\":\"%s\","
@@ -81,7 +81,7 @@ static void buildTemperaturesJSON(char* buffer, size_t bufferSize) {
              "\"tx\":%d,"
              "\"rssi\":%d"
              "}",
-             temps[0], temps[1], temps[2], temps[3], temps[4], temps[5],
+             temps[0], temps[1], temps[2], temps[3], temps[4], temps[5], temps[6],
              mode, color, timeStr, baseTemp,
              txPower,
              rssi

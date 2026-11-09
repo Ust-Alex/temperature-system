@@ -23,7 +23,7 @@ static void set_defaults() {
   settings.version = 2;
   
   settings.calibEnabled = true;
-  for (int i = 0; i < 6; i++) settings.offsets[i] = 0.0f;
+  for (int i = 0; i < 7; i++) settings.offsets[i] = 0.0f;
   settings.referenceSensor = 0;
   
   settings.greenThreshold = 0.12f;
@@ -97,12 +97,12 @@ void settings_set_calibration_enabled(bool enabled) {
 }
 
 float settings_get_offset(int idx) {
-  if (idx < 0 || idx >= 6) return 0.0f;
+  if (idx < 0 || idx >= 7) return 0.0f;
   return settings.offsets[idx];
 }
 
 void settings_set_offset(int idx, float offset) {
-  if (idx < 0 || idx >= 6) return;
+  if (idx < 0 || idx >= 7) return;
   settings.offsets[idx] = offset;
 }
 
@@ -111,7 +111,7 @@ int settings_get_reference() {
 }
 
 void settings_set_reference(int idx) {
-  if (idx < 0 || idx >= 6) return;
+  if (idx < 0 || idx >= 7) return;
   settings.referenceSensor = idx;
 }
 

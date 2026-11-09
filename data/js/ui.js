@@ -89,8 +89,8 @@ function processData(data) {
     state.lastDataTime = Date.now();
     
     // Обновляем карточки температур
-    if (data.temps && Array.isArray(data.temps) && data.temps.length >= 6) {
-        for (let i = 0; i < 6; i++) {
+    if (data.temps && Array.isArray(data.temps) && data.temps.length >= 7) {
+        for (let i = 0; i < 7; i++) {
             dom.updateCard(`card${i}`, data.temps[i], i);
         }
         state.pendingData = data.temps;

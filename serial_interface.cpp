@@ -139,8 +139,8 @@ void serial_print_status() {
   Serial.printf("Флаг перерисовки: %s\n",
                 forceDisplayRedraw ? "ДА" : "НЕТ");
   
-  Serial.println("\n--- СОСТОЯНИЕ ДАТЧИКОВ (6 шт.) ---");
-  for (int i = 0; i < 6; i++) {
+  Serial.println("\n--- СОСТОЯНИЕ ДАТЧИКОВ (7 шт.) ---");
+  for (int i = 0; i < 7; i++) {
     Serial.printf("  [%d] %s: ", i, sensorNames[i]);
     if (sensors[i].found) {
       Serial.printf("✅ Найден, ");

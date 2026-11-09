@@ -140,11 +140,11 @@ function performChartUpdate() {
             state.chart.data.labels[chartIdx] = state.dataBuffer.time[dataIdx];
         }
         
-        for (let s = 0; s < 6; s++) {
+        for (let s = 0; s < 7; s++) {
             state.chart.data.datasets[s].data[chartIdx] = state.dataBuffer.temps[s][dataIdx];
         }
         
-        state.chart.data.datasets[6].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
+        state.chart.data.datasets[7].data[chartIdx] = (state.lastValues.mode === 1 && baseTemp !== null) ? baseTemp : null;
     }
     
     for (let i = 0; i < desiredPoints - availableData; i++) {
@@ -157,7 +157,7 @@ function performChartUpdate() {
 }
 
 function commitDataToBuffer(temps) {
-    if (!temps || !Array.isArray(temps) || temps.length < 6) return;
+    if (!temps || !Array.isArray(temps) || temps.length < 7) return;
     
     const now = new Date();
     const timeLabel = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
@@ -166,7 +166,7 @@ function commitDataToBuffer(temps) {
     const idx = state.dataBuffer.index;
     
     state.dataBuffer.time[idx] = timeLabel;
-    for (let s = 0; s < 6; s++) {
+    for (let s = 0; s < 7; s++) {
         state.dataBuffer.temps[s][idx] = temps[s];
     }
     

@@ -86,8 +86,8 @@ void taskSerial(void* pv) {
         Serial.printf("Инициализация: %s\n", systemInitialized ? "ДА" : "НЕТ");
         Serial.printf("База гильзы: %.2f\n", guildBaseTemp);
 
-        Serial.println("\n--- ДАТЧИКИ (6 шт.) ---");
-        for (int i = 0; i < 6; i++) {
+        Serial.println("\n--- ДАТЧИКИ (7 шт.) ---");
+        for (int i = 0; i < 7; i++) {
           Serial.printf("  [%d] %s: ", i, sensorNames[i]);
           if (!sensors[i].found) {
             Serial.println("❌ не найден");
@@ -141,23 +141,23 @@ void taskSerial(void* pv) {
       } else if (cmd == "CALIB OFF") {
         toggleCalibration(false);
       } else if (cmd == "CALIB RESET") {
-        for (int i = 0; i < 6; i++) settings_set_offset(i, 0.0f);
+        for (int i = 0; i < 7; i++) settings_set_offset(i, 0.0f);
         settings_save();
         Serial.println("[CALIB] ✅ Все offset сброшены");
       } else if (cmd.startsWith("CALIB REF ")) {
         int idx = cmd.substring(10).toInt();
-        if (idx >= 0 && idx < 6) setReferenceSensor(idx);
-        else Serial.println("[CALIB] ❌ Индекс 0-5");
+        if (idx >= 0 && idx < 7) setReferenceSensor(idx);
+        else Serial.println("[CALIB] ❌ Индекс 0-6");
       } else if (cmd.startsWith("CALIB SET ")) {
         int sp1 = 9;
         int sp2 = cmd.indexOf(' ', sp1 + 1);
         if (sp2 > 0) {
           int idx = cmd.substring(sp1, sp2).toInt();
           float off = cmd.substring(sp2 + 1).toFloat();
-          if (idx >= 0 && idx < 6) setManualOffset(idx, off);
-          else Serial.println("[CALIB] ❌ Индекс 0-5");
+          if (idx >= 0 && idx < 7) setManualOffset(idx, off);
+          else Serial.println("[CALIB] ❌ Индекс 0-6");
         } else {
-          Serial.println("[CALIB] ❌ Формат: CALIB SET [0-5] [offset]");
+          Serial.println("[CALIB] ❌ Формат: CALIB SET [0-6] [offset]");
         }
       }
 

@@ -41,6 +41,6 @@ const CONFIG = {
         MAX_TEMP: 120,
         MIN_RANGE: 0.1
     },
-    DATASET_NAMES: ['Выход', '100см', '75см', '50см', 'Гильза', 'Куб'],
-    DATASET_COLORS: ['#FF00FF', '#FFA500', '#00FFFF', '#FFFF00', '#00FF00', '#FF4500']
+DATASET_NAMES: ['Выход', '100см', '75см', '50см', 'Гильза', 'Куб', 'ВОДА'],
+DATASET_COLORS: ['#FF00FF', '#FFA500', '#00FFFF', '#FFFF00', '#00FF00', '#FF4500', '#FFFFFF']
 };

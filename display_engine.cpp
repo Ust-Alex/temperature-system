@@ -3,10 +3,10 @@
  * ФАЙЛ: display_engine.cpp
  * ДВИЖОК ОТОБРАЖЕНИЯ - УПРАВЛЕНИЕ TFT ДИСПЛЕЕМ
  *
- * ВЕРСИЯ: 9.0 (ДЛЯ 6 ДАТЧИКОВ, ИСПОЛЬЗУЕТ sensorY[])
+ * ВЕРСИЯ: 9.1 (ДЛЯ 7 ДАТЧИКОВ)
  *
  * ОСНОВНЫЕ ИЗМЕНЕНИЯ:
- * - Все циклы расширены до 6 датчиков
+ * - Все циклы расширены до 7 датчиков
  * - Используется sensorY[i] вместо displayYPositions[i]
  * - Гильза теперь индекс 4
  * ============================================================================
@@ -49,8 +49,8 @@ void performFullDisplayRedraw() {
   tft.fillScreen(bgColor);
   lastGlobalBgColor = bgColor;
 
-  // Полный сброс кэша (6 датчиков)
-  for (int i = 0; i < 6; i++) {
+  // Полный сброс кэша (7 датчиков)
+  for (int i = 0; i < 7; i++) {
     lastDisplayTemps[i] = -1000.0f;
   }
   lastTimeString = "";
@@ -143,8 +143,8 @@ void taskDisplay(void* pvParameters) {
         lastTimeString = currentTime;
       }
 
-      // Отрисовка датчиков (6 датчиков, используем sensorY)
-      for (int i = 0; i < 6; i++) {
+      // Отрисовка датчиков (7 датчиков, используем sensorY)
+      for (int i = 0; i < 7; i++) {
         if (!sensors[i].found) continue;
 
         float temp = sysData.temps[i];
@@ -173,7 +173,7 @@ void taskDisplay(void* pvParameters) {
         } else {
           tft.fillScreen(bgColor);
           lastGlobalBgColor = bgColor;
-          for (int i = 0; i < 6; i++) {
+          for (int i = 0; i < 7; i++) {
             lastDisplayTemps[i] = -1000.0f;
           }
           lastMode2TimeString = "";
@@ -198,8 +198,8 @@ void taskDisplay(void* pvParameters) {
         lastMode2TimeString = currentTime;
       }
 
-      // Отрисовка датчиков (6 датчиков, используем sensorY)
-      for (int i = 0; i < 6; i++) {
+      // Отрисовка датчиков (7 датчиков, используем sensorY)
+      for (int i = 0; i < 7; i++) {
         if (!sensors[i].found) continue;
 
         float temp = sysData.temps[i];
@@ -263,8 +263,8 @@ void resetDisplayState(uint8_t newMode) {
     }
   }
 
-  // Сброс кэша (6 датчиков)
-  for (int i = 0; i < 6; i++) {
+  // Сброс кэша (7 датчиков)
+  for (int i = 0; i < 7; i++) {
     lastDisplayTemps[i] = -1000.0f;
   }
   lastTimeString = "";

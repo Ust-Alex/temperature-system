@@ -36,8 +36,8 @@ void taskMeasure(void* pvParameters) {
     // ОПРОС ДАТЧИКОВ
     sensors_update_all();
 
-    // ОБНОВЛЕНИЕ sysData (6 датчиков)
-    for (int i = 0; i < 6; i++) {
+    // ОБНОВЛЕНИЕ sysData (7 датчиков)
+    for (int i = 0; i < 7; i++) {
       if (sensors[i].found && sensors[i].temp != TEMP_NO_DATA) {
         safeUpdateSystemData(i, sensors[i].temp, 0.0f);
       } else {

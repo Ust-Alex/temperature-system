@@ -29,8 +29,9 @@ const state = {
             new Array(CONFIG.MAX_POINTS).fill(null),
             new Array(CONFIG.MAX_POINTS).fill(null),
             new Array(CONFIG.MAX_POINTS).fill(null),
-            new Array(CONFIG.MAX_POINTS).fill(null)
-        ],
+            new Array(CONFIG.MAX_POINTS).fill(null),
+			new Array(CONFIG.MAX_POINTS).fill(null)
+		],
         index: 0,
         count: 0,
         lastTime: ''
@@ -40,7 +41,7 @@ const state = {
         color: -1,
         time: '',
         baseTemp: null,
-        temps: [null, null, null, null, null, null]
+        temps: [null, null, null, null, null, null, null]
     },
     currentRange: 60,
     chart: null,
